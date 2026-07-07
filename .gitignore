@@ -1,0 +1,14 @@
+*~
+*.gz
+*.swp
+*.tar
+*.tgz
+*.zip
+
+# Agent and IDE files
+.claude/
+.idea/
+*-prompt.md
+
+# OS / editor cruft
+.DS_Store
