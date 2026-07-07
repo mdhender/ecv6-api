@@ -64,7 +64,7 @@ A **faction** is the persistent in-game owner (the engine owns `faction_id`).
 - **Never orphaned.** It always has exactly one controller. When a player leaves
   (application side: the seat's `is_active` goes false), the engine assigns an
   **NPC** to control the faction.
-- A player controls **0..\*** factions. This is genuinely `0..*`, but multi-faction
+- **A player controls `0..*` factions.** This is genuinely `0..*`, but multi-faction
   control will not be implemented for a while — treat it as ~one per player in the
   near term.
 
@@ -140,7 +140,9 @@ controller ─||──o< faction ─||──o< ship_or_colony ─┬──o< pop
 
 ## Relationship to the player-facing docs
 
-The docs use a single word, "player," for what the server splits three ways. The
-proposed reconciliation (account / player / faction) is in `docs-prompt.md`,
-**pending the docs team's adoption**. `controller`, `npc`, and `ship_or_colony`
-are engine-internal and largely not player-facing.
+The docs used a single word, "player," for what the server splits three ways. That
+reconciliation — **account / player / faction** — is now **adopted upstream**
+(ecv6-docs has `account.md`, `players.md`, and `faction.md`). A follow-up ask is
+open with the docs team: the faction **lifecycle** — founding, independence, and
+persistence (`docs-prompt.md`). `controller`, `npc`, and `ship_or_colony` remain
+engine-internal and largely not player-facing.

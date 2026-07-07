@@ -135,16 +135,15 @@ of the codebase.
 - **GM** — the game master; the operator who generates and runs a game. In the
   implementation, a member whose `is_gm` is set.
 
-> **Docs vs. implementation — reconciliation in progress.** Three concepts were
-> being crushed into "player": the **account** (global login — email, secret),
-> the **player** (a seat in *one* game — the per-game id and GM flag;
-> = `game_account_role`), and the **faction** (the in-game entity commanded). A
-> three-tier vocabulary — `account` / `player` / `faction`, with `player` and
-> `faction` meaning the same thing in both repos — has been proposed to the docs
-> team (`docs-prompt.md`) and is **pending their adoption**. This resolves the
-> "sequential, unique-in-game, never-reused id": it's the **player (seat)** id,
-> not the account id. Until the docs team confirms, treat the docs' single
-> "player" as ambiguous.
+> **Docs vs. implementation.** The docs' single "player" was split three ways:
+> the **account** (global login — email, secret), the **player** (a seat in *one*
+> game — the per-game id and GM flag; = `game_account_role`), and the **faction**
+> (the in-game entity commanded), with `player` and `faction` meaning the same
+> thing in both repos. This vocabulary is now **adopted upstream** (ecv6-docs has
+> `account.md`, `players.md`, `faction.md`). It resolved the "sequential,
+> unique-in-game, never-reused id": that's the **player (seat)** id, not the
+> account id. A follow-up ask is open with the docs team — the faction
+> **lifecycle** (founding, independence, persistence), in `docs-prompt.md`.
 
 ## Architecture — two domains
 
