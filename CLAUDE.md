@@ -142,8 +142,9 @@ of the codebase.
 > thing in both repos. This vocabulary is now **adopted upstream** (ecv6-docs has
 > `account.md`, `players.md`, `faction.md`). It resolved the "sequential,
 > unique-in-game, never-reused id": that's the **player (seat)** id, not the
-> account id. A follow-up ask is open with the docs team — the faction
-> **lifecycle** (founding, independence, persistence), in `docs-prompt.md`.
+> account id. The faction **lifecycle** (founding, independence, persistence) has
+> since been adopted upstream too — with engine internals (NPC/controller) kept
+> out of the player docs.
 
 ## Architecture — two domains
 

@@ -64,9 +64,11 @@ A **faction** is the persistent in-game owner (the engine owns `faction_id`).
 - **Never orphaned.** It always has exactly one controller. When a player leaves
   (application side: the seat's `is_active` goes false), the engine assigns an
   **NPC** to control the faction.
-- **A player controls `0..*` factions.** This is genuinely `0..*`, but multi-faction
-  control will not be implemented for a while — treat it as ~one per player in the
-  near term.
+- **A player controls `0..*` factions.** The `0` is real and *permanent*, not only
+  transient: the **GM seat commands no faction at all**, and a just-joined player
+  has none until setup. **The engine must never assume a 1:1 player↔faction** — the
+  GM is the standing exception. The upper `*` (multi-faction) will not be
+  implemented for a while — treat it as ~one per non-GM player in the near term.
 
 ## NPCs
 
@@ -126,6 +128,8 @@ controller ─||──o< faction ─||──o< ship_or_colony ─┬──o< pop
 - **Factions never die and are never orphaned.**
 - **The engine sees `player_id`, never `account_id`.**
 - **One owner per asset at a time**, but ownership is transferable across turns.
+- **A player may command zero factions** — the GM seat always, a not-yet-founded
+  player until setup. Never assume 1:1 player↔faction.
 
 ## Open threads
 
@@ -137,12 +141,18 @@ controller ─||──o< faction ─||──o< ship_or_colony ─┬──o< pop
 - **Ship vs. colony schema** — a colony is a ship that never moves; the few
   distinctions and whether they share one table are a schema question for later.
 - **Flavored NPCs** (pirates / zealots / expansionistas) — future work.
+- **Governments** — the docs have a faction govern through one or more
+  *governments* (empires, republics, houses). A government provides **bonuses and
+  penalties**; exact values are to be documented later, alongside rebels and
+  insurrections. Where "government" sits in our model — a layer between faction and
+  its holdings, or a faction attribute — is open.
 
 ## Relationship to the player-facing docs
 
-The docs used a single word, "player," for what the server splits three ways. That
-reconciliation — **account / player / faction** — is now **adopted upstream**
-(ecv6-docs has `account.md`, `players.md`, and `faction.md`). A follow-up ask is
-open with the docs team: the faction **lifecycle** — founding, independence, and
-persistence (`docs-prompt.md`). `controller`, `npc`, and `ship_or_colony` remain
-engine-internal and largely not player-facing.
+The docs used a single word, "player," for what the server splits three ways. Both
+the **account / player / faction** vocabulary *and* the faction **lifecycle**
+(founding, independence, persistence) are now **adopted upstream** (ecv6-docs
+`account.md`, `players.md`, `faction.md`). The docs describe independents as
+something players encounter, but not *how* they run — `controller`, `npc`, and
+`ship_or_colony` stay engine-internal and are deliberately kept out of the player
+docs.
