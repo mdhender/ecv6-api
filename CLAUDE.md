@@ -5,9 +5,10 @@ Guidance for Claude Code when working in this repository.
 ## What this project is
 
 The Go server for **Epimethean Challenge (EC)** — a 4X, science-fantasy game.
-This repository holds the running system: the **API server**, the **data store**,
-and the **game engine** that generates clusters, manages players, and processes
-turns.
+This repository is an **API server** with **no front-end client**: it exposes a
+RESTful API over two domains — the **application** (accounts, authentication,
+authorization) and the **game** (the deterministic engine) — backed by a
+**SQLite data store**. See [Architecture](#architecture--two-domains).
 
 EC is a **distinct game**, reverse-engineered from the prose of the original
 rulebook — not a port or clone of it. It deliberately diverges from the original
@@ -17,9 +18,14 @@ snail-mail / play-by-email flow. When the original's rules and EC's docs disagre
 **EC's docs win** — do not "restore" original behavior from memory of the source
 system.
 
-This is a **greenfield** codebase — as of this writing there is no Go source yet.
-When you add the first packages, update this file to describe the actual layout
-rather than leaving it aspirational.
+This is the **sixth iteration (v6)**; no earlier iteration ever launched a
+working API server, so treat inherited assumptions skeptically. There is **no
+committed Go source yet** — `doc/api/openapi-v4.yaml` is copied in from the failed
+v4 iteration and is **not yet reviewed**.
+
+> **Current phase: planning and documentation.** Do **not** write code, scaffold
+> packages, run migrations, or modify the API surface (including the v4 OpenAPI)
+> until explicitly asked. We are settling docs and design first.
 
 - Sibling repository: **`../docs`** (`github.com/mdhender/ecv6-docs`) — the Hugo
   documentation site. See [Relationship to the docs](#relationship-to-the-docs).
@@ -123,11 +129,88 @@ of the codebase.
 - **Cluster** — the map: a grid of flat-top hexes centered on the origin `(0,0)`,
   addressed by axial coordinates `(q, r)`. Generated once, at setup.
 - **System** — the contents of a single occupied hex, addressed by its `(q, r)`.
-- **Player** — a person in a game. Scoped to one game. Has a sequential positive
-  integer `id` (assigned in order, never reused), a lowercased unique `email`, an
-  active/inactive state (never physically deleted — removing marks inactive), and
-  a plaintext password (a JSON-safe, space-free shared secret).
-- **GM** — the game master; the operator who generates and runs a game.
+- **Player** — a person in a game (docs sense). Scoped to one game. In the
+  implementation this maps to an [Account](#application-model) joined to a game
+  via a `game_account_role` membership — see the reconciliation note below.
+- **GM** — the game master; the operator who generates and runs a game. In the
+  implementation, a member whose `is_gm` is set.
+
+> **Docs vs. implementation — reconciliation in progress.** Three concepts were
+> being crushed into "player": the **account** (global login — email, secret),
+> the **player** (a seat in *one* game — the per-game id and GM flag;
+> = `game_account_role`), and the **faction** (the in-game entity commanded). A
+> three-tier vocabulary — `account` / `player` / `faction`, with `player` and
+> `faction` meaning the same thing in both repos — has been proposed to the docs
+> team (`docs-prompt.md`) and is **pending their adoption**. This resolves the
+> "sequential, unique-in-game, never-reused id": it's the **player (seat)** id,
+> not the account id. Until the docs team confirms, treat the docs' single
+> "player" as ambiguous.
+
+## Architecture — two domains
+
+The server is split into two domains that do not know each other's internals:
+
+- **Application** — owns account management, authentication, and authorization.
+  It decides *who* may act, and on *which* games.
+- **Game** (the *engine*) — owns game logic and is **unaware of the application
+  side**. The server invokes the engine by passing in the game's data plus a
+  command; the engine reads game state as needed, does its work, updates game
+  state, and exits. It has no notion of accounts, HTTP, or auth.
+
+**The data store belongs to neither domain — an unresolved tension.** Both the
+application and the engine need persistence, but neither "owns" the store. Don't
+assume this is settled; when a change forces the question, surface it rather than
+quietly coupling a domain to storage.
+
+## Application model
+
+Concepts owned by the application domain. These are *additive* to the docs'
+game vocabulary (above) and not final — more actions get flushed out when we
+review the v4 API.
+
+- **Account** — `(id, email, is_admin, is_active, hashed_secret)`. `id` is the
+  integer PK; `email` is stored lowercased and is unique; the secret is **hashed**,
+  never stored plainly.
+- **Application roles:** `admin` and `user`. An **admin** can manage accounts and
+  games.
+- **Game (application record)** — `(id, name, is_active)`. An admin creates a
+  game and assigns players.
+- **Membership** — the bridge table `game_account_role`
+  `(game_id, account_id, is_gm, is_active)`, unique on `(game_id, account_id)` so
+  an account cannot join a game twice. A member with `is_gm` set may manage the
+  game and its players (add/remove).
+- **Soft deletes preferred.** Almost all tables use `is_active = false` rather
+  than hard deletes; players are made inactive, not removed.
+
+## Control and ownership
+
+Full model: [`doc/control-and-ownership.md`](doc/control-and-ownership.md). The
+essentials:
+
+- **Controllers control; factions own.** A **controller** (a `player`, or an
+  engine-driven `npc`) issues orders each turn for the faction(s) it controls; the
+  **faction** owns the assets. A player never owns anything, so a player leaving
+  cuts only the control link — the faction and its assets persist.
+- **Chain:** `controller ─||──o< faction ─||──o< ship_or_colony ─┬─o< population └─|< inventory`.
+  Every child has exactly one mandatory parent: nothing is un-owned.
+- **Factions** are created by a player's setup-ritual API call after joining,
+  never die (may hit zero assets), and are never orphaned — on a player leaving,
+  the engine assigns an NPC.
+- **Domain boundary by id:** `account_id` app-only (engine never sees it);
+  `game_id`, `player_id` game-consumed; `faction_id` engine-owned. The engine
+  knows control by `player_id`, never by account.
+
+## Game state — a temporal model
+
+Game state follows Martin Fowler's
+[temporal patterns](https://martinfowler.com/eaaDev/timeNarrative.html), with one
+adaptation: **the game turn is the "effective date"**, not a wall-clock
+timestamp. There are **no audit logs and no event streaming** — the turn number
+is the axis of time.
+
+- Historical queries take an **`asOf` turn**: "the state as of turn N."
+- This matches the docs' rule that a turn's report reflects the state at the
+  *start* of the turn.
 
 ## Determinism — the load-bearing invariant
 
@@ -184,19 +267,39 @@ compatibility surface, like a save-file format):
 - Format with `gofmt`; vet with `go vet`. Run `go test ./...` before considering
   a change done.
 
-## Commands
+## Data store
 
-_No build/test tooling exists yet. Once the module is initialized, the usual:_
+- **SQLite 3** via **`github.com/zombiezen/go-sqlite`** (ZombieZen) — **not**
+  `modernc`. Migrations use ZombieZen's **`sqlitemigration`** package.
+- **Alpha, so data is disposable.** We rebuild from data **files** at will and may
+  **compress/squash migration files** rather than preserve their history. No alpha
+  SQLite data is precious.
+- **Data directories:** `data/claude/` is **yours** — destructive tests are fine
+  there. The user works in `data/alpha/` and `data/ec01/`; leave those alone.
+- **Environment:** set `ECV6_ENV=claude` so you never clobber the user's
+  environments. A dotenv loader will be added later (you'll be told); env vars use
+  the `ECV6_` prefix.
 
-```sh
-go mod tidy
-go build ./...
-go test ./...
-go vet ./...
-```
+## Commands & configuration
 
-Update this section with the real entry points (server binary, CLI, migrations)
-as they land.
+CLI is built with **`github.com/peterbourgon/ff/v4`** (commands + subcommands).
+Environment variables use the **`ECV6_`** prefix, loaded by the dotenv package on
+startup once it lands.
+
+Two binaries:
+
+- **`cmd/ecdb`** — runs commands **directly against the database**, assuming it is
+  the *only* process touching it. **Database creation is `ecdb`'s job** (rebuilt
+  from data files).
+- **`cmd/ec`** — starts and stops the **server**. It **runs migrations
+  automatically whenever it opens the database.** **Crucially, `ec` must never
+  create a new *persistent* database** — if the persistent DB file is missing it
+  must fail, not create one. It *may* spin up an *in-memory* database for testing.
+  (Creating the persistent database is `ecdb`'s responsibility.)
+
+_No Go source or module exists yet; when it lands, the usual `go build ./...`,
+`go test ./...`, `go vet ./...`, `gofmt`. Update this section with real entry
+points as they arrive._
 
 ## Licensing
 

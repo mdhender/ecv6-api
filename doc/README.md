@@ -15,6 +15,7 @@ relative path — relative paths break when rendered on GitHub.
 | --- | --- |
 | [architecture.md](architecture.md) | Package layout, boundaries, request lifecycle |
 | [model.md](model.md) | Domain concept ↔ Go type ↔ storage schema, and the invariants the store guarantees |
+| [control-and-ownership.md](control-and-ownership.md) | Who controls and owns what: account → player → controller → faction → asset, with cardinalities and the domain boundary |
 | [determinism.md](determinism.md) | The PRNG mechanism spec: seeds, streams, key paths, frozen surfaces, how to add a domain tag, golden vectors |
 | [counter-based-prng.md](counter-based-prng.md) | Why the determinism design looks the way it does — reasoning, prior art, trade-offs |
 | [decisions/](decisions/) | ADRs — one file per hard-to-reverse decision |

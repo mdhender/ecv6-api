@@ -13,6 +13,11 @@ Concept definitions:
 > "Invariant" column authoritative even before the types exist — it is the
 > checklist the store is tested against.
 
+For how the concepts *relate* — control vs. ownership, controllers (player/NPC),
+factions, and the asset chain — see
+[control-and-ownership.md](control-and-ownership.md). This page is the narrower
+type/schema mapping.
+
 ## Concept ↔ type ↔ schema
 
 | Concept | Go type | Stored as | Invariants to enforce |
