@@ -1,15 +1,5 @@
 // Copyright (c) 2026 Michael D Henderson. All rights reserved.
 
-// Package server is the application-domain HTTP server: it wires the
-// standard-library net/http router (ADR-0011), the cross-cutting middleware
-// (request id, request logging, panic recovery), and the standard error
-// envelope (doc/api/conventions.md), and serves the routes under the base path
-// /api (ADR-0006).
-//
-// This is the skeleton: only the public System endpoints — GET /healthz and
-// GET /version — are served. The authenticated and admin route groups exist so
-// later work (auth, accounts, games) plugs into a settled structure. Wire DTOs
-// come from the generated internal/api package (spec-first; ADR-0006).
 package server
 
 import (
