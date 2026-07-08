@@ -73,6 +73,33 @@ These channels are not mutually exclusive: the same error can be **logged** via
 command, **reported** on stderr with a non-zero exit. Logging an error and
 surfacing it are different acts for different audiences.
 
+### Selecting the log level
+
+Every command accepts `--logging-level` (`DEBUG` | `INFO` | `WARN` | `ERROR`,
+case-insensitive), also settable via the binary's env prefix
+(`ECDB_LOGGING_LEVEL`, `EC_LOGGING_LEVEL`); the flag wins over the env var. A
+single string flag is used rather than one boolean per level, so there are no
+ambiguous combinations (`--debug --info`) and the set extends cleanly.
+
+The default is **`INFO`**. This is not an arbitrary pick: it is `slog`'s own
+default — `slog.HandlerOptions.Level` documents that a nil `Level` "assumes
+`LevelInfo`" — so the no-flag path matches a bare `slog` handler. The level
+constants are `LevelDebug=-4`, `LevelInfo=0`, `LevelWarn=4`, `LevelError=8`, so
+`INFO` discards only `DEBUG`.
+
+`ERROR` is the floor and cannot be disabled: the resolved `slog.Level` is clamped
+to at most `LevelError`, and there is no in-set level above `ERROR` to turn it off.
+An unknown or misspelled level name is a usage error — reported on stderr as
+`<name>: unknown logging level %q` with a non-zero exit (error *reporting* per the
+channels above), distinct from the log threshold itself.
+
+The level governs only the `slog` channel — it never changes what a command writes
+to stdout (results) or stderr (error reports); a quiet command stays quiet on
+stdout regardless of level. The logger is constructed in `internal/cli` (over a
+`slog.LevelVar` set to the resolved level), writes to stderr, and is passed into
+the command tree as a parameter; there is no global logger. Handler format
+(text vs JSON) is out of scope here and defaults to text.
+
 ## Consequences
 
 - Command output is scriptable by default: results on stdout stay clean because
