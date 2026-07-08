@@ -282,7 +282,13 @@ func cmdCompact(ctx context.Context, log *slog.Logger, args []string) error {
 	if err != nil {
 		return fmt.Errorf("compact: cannot stat %s after compacting: %w", dbPath, err)
 	}
-	fmt.Fprintf(os.Stderr, "compacted %s (%d -> %d bytes, reclaimed %d)\n", dbPath, before, after, before-after)
+	// Compaction leaves the schema version unchanged; report it so the operator can
+	// see which version they just compacted (compact accepts any version).
+	version, err := store.Version(ctx, dbPath)
+	if err != nil {
+		return fmt.Errorf("compact: cannot read version of %s after compacting: %w", dbPath, err)
+	}
+	fmt.Fprintf(os.Stderr, "compacted %s (version %d, %d -> %d bytes, reclaimed %d)\n", dbPath, version, before, after, before-after)
 	return nil
 }
 

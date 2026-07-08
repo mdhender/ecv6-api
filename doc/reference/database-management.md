@@ -83,9 +83,10 @@ Backup and in-place compaction are kept separate
 
 Reclaims free space in `PATH/ec.db` by running SQLite's `VACUUM` **in place**,
 rewriting the file to release pages freed by deletions (EC prefers soft deletes, so
-freed space accrues) and to defragment. Reports the before/after size on standard
-error, e.g. `compacted games/example/ec.db (4136960 -> 32768 bytes, reclaimed
-4104192)`; it writes nothing to standard output.
+freed space accrues) and to defragment. Reports the database version and the
+before/after size on standard error, e.g. `compacted games/example/ec.db (version
+1, 4136960 -> 32768 bytes, reclaimed 4104192)`; it writes nothing to standard
+output.
 
 - **Requires only an EC database — any version.** Unlike `backup`, `compact` does
   not check the schema version: compaction changes layout, not schema, so it is
