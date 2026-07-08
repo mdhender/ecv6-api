@@ -74,7 +74,9 @@ Backup and in-place compaction are kept separate
 
 ### `ecdb migration up PATH`
 
-Applies any migrations the database is missing. Never creates a database.
+Applies any migrations the database is missing. Never creates a database. Running
+it against a new build's schema is part of
+[Upgrade `ec` and `ecdb`](../how-to/upgrade-ec-and-ecdb.md).
 
 - Fails if the folder or `ec.db` does not exist.
 - Fails if a migration errors.
