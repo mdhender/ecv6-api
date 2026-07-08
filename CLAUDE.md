@@ -64,8 +64,7 @@ repo implements that behavior.
   docs conflict, the docs win — fix the code, don't quietly change the rule. If a
   rule is missing or the two disagree, flag it.
 - **Implementation detail migrates out of the docs** into here (code + `/doc`):
-  determinism internals, wire formats, schemas. The docs stay player/referee-
-  facing.
+  determinism internals, wire formats, schemas. The docs stay player/referee-facing.
 - **Links vs. paths.** Naming `../docs` in prose ("go read this locally") is fine,
   but any **navigable link** in committed files must use the repository URL, not a
   `../docs` relative path (which breaks when rendered on GitHub):
@@ -83,18 +82,18 @@ examples use `games/example` as the database folder.
 
 Pull these in as needed:
 
-| Topic | Read |
-| --- | --- |
-| Package layout, boundaries, request lifecycle | [`doc/architecture.md`](doc/architecture.md) |
-| Concept ↔ Go type ↔ schema, store invariants | [`doc/model.md`](doc/model.md) |
-| Who controls/owns what (account→player→faction→asset) | [`doc/control-and-ownership.md`](doc/control-and-ownership.md) |
-| Temporal state model (turn = the coordinate) | [`doc/storing-state-as-timebound-facts.md`](doc/storing-state-as-timebound-facts.md) |
-| Determinism mechanism (seeds, streams, key paths, frozen surfaces) | [`doc/determinism.md`](doc/determinism.md) |
-| Why determinism looks that way (rationale, prior art) | [`doc/counter-based-prng.md`](doc/counter-based-prng.md) |
-| REST wire contract (source of truth) | [`doc/api/openapi.yaml`](doc/api/openapi.yaml) |
-| API auth, error envelope, versioning, idempotency | [`doc/api/conventions.md`](doc/api/conventions.md) |
-| Hard-to-reverse decisions | [`doc/decisions/`](doc/decisions/) (ADRs) |
-| Database file, `ecdb` commands, migrations | [`doc/reference/database-management.md`](doc/reference/database-management.md) |
+| Topic                                                              | Read                                                                                 |
+|--------------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| Package layout, boundaries, request lifecycle                      | [`doc/architecture.md`](doc/architecture.md)                                         |
+| Concept ↔ Go type ↔ schema, store invariants                       | [`doc/model.md`](doc/model.md)                                                       |
+| Who controls/owns what (account→player→faction→asset)              | [`doc/control-and-ownership.md`](doc/control-and-ownership.md)                       |
+| Temporal state model (turn = the coordinate)                       | [`doc/storing-state-as-timebound-facts.md`](doc/storing-state-as-timebound-facts.md) |
+| Determinism mechanism (seeds, streams, key paths, frozen surfaces) | [`doc/determinism.md`](doc/determinism.md)                                           |
+| Why determinism looks that way (rationale, prior art)              | [`doc/counter-based-prng.md`](doc/counter-based-prng.md)                             |
+| REST wire contract (source of truth)                               | [`doc/api/openapi.yaml`](doc/api/openapi.yaml)                                       |
+| API auth, error envelope, versioning, idempotency                  | [`doc/api/conventions.md`](doc/api/conventions.md)                                   |
+| Hard-to-reverse decisions                                          | [`doc/decisions/`](doc/decisions/) (ADRs)                                            |
+| Database file, `ecdb` commands, migrations                         | [`doc/reference/database-management.md`](doc/reference/database-management.md)       |
 
 ## Key invariants (don't violate; details in the linked docs)
 
@@ -132,8 +131,8 @@ Pull these in as needed:
   ([ADR-0007](doc/decisions/adr-0007-forward-only-migrations.md)).
 - **Alpha, so data is disposable.** We rebuild from data files at will and may
   squash migration files. No alpha SQLite data is precious.
-- **Data directories:** `data/claude/` is **yours** — destructive tests are fine
-  there. Leave `data/alpha/` and `data/ec01/` (the user's) alone.
+- **Data directories:** `games/claude/` is **yours** — destructive tests are fine
+  there. Leave `games/alpha/` and `games/zephyr` (the user's) alone.
 - **Use the `claude` environment** so you never clobber the user's setup:
   `ECDB_ENV=claude` for `cmd/ecdb`, `EC_ENV=claude` for `cmd/ec`.
 
