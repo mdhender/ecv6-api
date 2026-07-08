@@ -57,7 +57,8 @@ sidecar files, then builds a fresh one. During alpha this is expected — databa
 are disposable and rebuilt from data files.
 
 > **Warning:** `--overwrite` is destructive and cannot be undone. Never point it
-> at a database you care about.
+> at a database you care about. To keep a snapshot first, run
+> [`ecdb backup`](../reference/database-management.md) before overwriting.
 
 ## Apply migrations to an existing database
 

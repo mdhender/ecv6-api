@@ -135,6 +135,29 @@ func MigrateUp(ctx context.Context, dbPath string) error {
 	return nil
 }
 
+// Backup writes a consistent, defragmented single-file copy of the database at
+// dbPath to destPath using SQLite's VACUUM INTO. The source is opened read-only
+// and is never modified. VACUUM INTO refuses to overwrite an existing destPath,
+// so a pre-existing backup file fails rather than being clobbered.
+//
+// Backup does not check the source version; callers that require a current
+// database (as ecdb backup does) should Verify first.
+func Backup(_ context.Context, dbPath, destPath string) error {
+	conn, err := openReadOnly(dbPath)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	// The VACUUM INTO target is a bound parameter, never string-concatenated.
+	err = sqlitex.ExecuteTransient(conn, "VACUUM INTO ?;", &sqlitex.ExecOptions{
+		Args: []any{destPath},
+	})
+	if err != nil {
+		return fmt.Errorf("backup %s to %s: %w", dbPath, destPath, err)
+	}
+	return nil
+}
+
 // openReadOnly opens dbPath read-only after confirming it exists as a regular
 // file and carries our application_id.
 func openReadOnly(dbPath string) (*sqlite.Conn, error) {

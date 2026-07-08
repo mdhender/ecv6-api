@@ -27,9 +27,13 @@ missing, `ec` fails. Create the database with `ecdb` before the first `ec` start
 
 Each command takes `PATH`, the folder that holds (or will hold) `ec.db`. Status
 and error messages are plain, human-readable text written to standard error; a
-failing command prints `ecdb: <message>` and exits non-zero. The one exception is
-`migration version`, which writes its result — a bare integer — to standard output
-so scripts can capture it.
+failing command prints `ecdb: <message>` and exits non-zero. Commands whose result
+is a value write only that value to standard output so scripts can capture it:
+`migration version` writes the schema version (a bare integer) and `backup` writes
+the path of the file it wrote.
+
+Flags always precede `PATH` (e.g. `ecdb backup --output-path DIR PATH`): the
+command parser does not accept flags after a positional argument.
 
 ### `ecdb create [--overwrite] PATH`
 
@@ -39,6 +43,34 @@ Creates `PATH/ec.db` and applies all migrations. `PATH` must be an existing fold
 - Fails if `ec.db` already exists, unless `--overwrite` is given.
 - `--overwrite` deletes the existing `ec.db` and its `-wal`/`-shm`/`-journal`
   sidecar files before creating a new one. It is destructive and cannot be undone.
+
+### `ecdb backup [--output-path DIR] PATH`
+
+Writes a consistent, defragmented single-file copy of `PATH/ec.db` and prints the
+copy's full path to standard output.
+
+- **Verifies the source first, and it must be exactly current** — the database's
+  version must equal the binary's expected version (the same check as
+  `migration verify`). This is deliberate: `backup` refuses to snapshot a database
+  that is missing, not an EC database, or not current, so you never capture a stale
+  or foreign file. To snapshot *before* applying new migrations, back up while the
+  database is still current (before upgrading the binary that introduces them).
+- **The backup file name is chosen by `ecdb`, never the caller.** It is always
+  `ec.db.<timestamp-utc>`, a filesystem-safe, sortable UTC stamp — for example
+  `ec.db.20260708T190345Z`.
+- **`--output-path DIR`** selects the folder the backup is written into. It
+  defaults to `PATH` (beside the source database) and must be an existing folder,
+  not a file name.
+- **Fails if the destination file already exists.** There is no overwrite flag; a
+  name collision (two backups within the same second) is an error, not a clobber.
+- The source is opened read-only and never modified. The copy is made with SQLite's
+  `VACUUM INTO`, so it is defragmented and carries the same `application_id` and
+  `user_version`.
+
+There is no `restore` command; restoring is a deliberate, documented procedure —
+see the how-to [Restore a database from a backup](../how-to/restore-a-database-from-a-backup.md).
+Backup and in-place compaction are kept separate
+([ADR-0010](../decisions/adr-0010-backup-and-compaction-are-separate.md)).
 
 ### `ecdb migration up PATH`
 

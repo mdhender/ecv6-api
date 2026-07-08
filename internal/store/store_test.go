@@ -86,6 +86,56 @@ func TestVerifyVersionMismatch(t *testing.T) {
 	}
 }
 
+// TestBackup copies a database and confirms the copy is a current EC database.
+func TestBackup(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, DBName)
+	if err := Create(ctx, dbPath); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	dest := filepath.Join(dir, "backup.db")
+	if err := Backup(ctx, dbPath, dest); err != nil {
+		t.Fatalf("Backup: %v", err)
+	}
+
+	// The copy must itself verify as a current EC database.
+	if err := Verify(ctx, dest); err != nil {
+		t.Errorf("Verify(backup): %v", err)
+	}
+	// The source must be untouched and still current.
+	if err := Verify(ctx, dbPath); err != nil {
+		t.Errorf("Verify(source) after backup: %v", err)
+	}
+}
+
+// TestBackupDestExists confirms Backup refuses to overwrite an existing file.
+func TestBackupDestExists(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, DBName)
+	if err := Create(ctx, dbPath); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	dest := filepath.Join(dir, "backup.db")
+	if err := os.WriteFile(dest, []byte("in the way"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := Backup(ctx, dbPath, dest); err == nil {
+		t.Errorf("Backup over existing file = nil, want error")
+	}
+}
+
+// TestBackupSourceMissing confirms a missing source is reported, not created.
+func TestBackupSourceMissing(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, DBName)
+	if err := Backup(context.Background(), dbPath, filepath.Join(dir, "backup.db")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Backup error = %v, want ErrNotFound", err)
+	}
+}
+
 // TestMigrateUpApplies drives the apply path: an empty EC database at version 0
 // is brought current.
 func TestMigrateUpApplies(t *testing.T) {
