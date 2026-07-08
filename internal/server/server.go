@@ -145,6 +145,15 @@ func (s *Server) Handler() http.Handler {
 	authed.handle(http.MethodGet, "/games/{gameId}", s.handleGetGame)
 	authed.handle(http.MethodPatch, "/games/{gameId}", s.handleUpdateGame)
 
+	// Game membership — the game_account_role boundary table (openapi.yaml:
+	// listGameMembers, addGameMember, updateGameMember). All authenticated; the
+	// per-game authorization (admin-or-active-GM, plus self-drop) lives in the
+	// handlers, so they hang on the authenticated group. No engine-owned identity
+	// crosses this surface (ADR-0003).
+	authed.handle(http.MethodGet, "/games/{gameId}/members", s.handleListGameMembers)
+	authed.handle(http.MethodPost, "/games/{gameId}/members", s.handleAddGameMember)
+	authed.handle(http.MethodPatch, "/games/{gameId}/members/{playerId}", s.handleUpdateGameMember)
+
 	// A catch-all so an unknown path returns the JSON error envelope rather than
 	// net/http's plain-text 404.
 	mux.HandleFunc("/", s.handleNotFound)
