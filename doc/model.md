@@ -22,13 +22,27 @@ type/schema mapping.
 
 | Concept | Go type | Stored as | Invariants to enforce |
 | --- | --- | --- | --- |
-| Game | `TODO` | `TODO` | id is a JSON-safe, space-free slug; holds `seed1`,`seed2` (`uint64`) and a current turn (`0` = setup) |
+| Game | `store.Game` | `games` | integer PK, `name` the human label (ADR-0003 — the earlier "slug" is superseded); `status` lifecycle + `is_active` visibility. Engine-owned `seed1`/`seed2` (`uint64`) and current turn (`0` = setup) are **deferred** — they land with the engine, not the application schema |
 | Turn | `TODO` | `TODO` | `0` = setup/no-turn (zero value); advances only on GM action; a report reflects the **start** of its turn |
 | Player | `TODO` | `TODO` | `id` positive int, sequential, **never reused**; `email` lowercased, unique within game across active **and** inactive; active/inactive state, never physically deleted |
 | Password | `TODO` | `TODO` | plaintext shared secret; JSON-safe, space-free |
 | Cluster | `TODO` | `TODO` | one per game; derives its own seeds from the game's; generated once at setup |
 | System | `TODO` | `TODO` | addressed by axial `(q, r)`; contents drawn from a stream keyed by `(q, r)`, order-independent |
 | Orders | `TODO` | `TODO` | plain text; applied together at turn processing; do not advance the current turn |
+
+## Application domain (implemented)
+
+The application-side persistence has landed in `internal/store` (migration 1). The
+authoritative field-level reference is the godoc on each type; this table is the
+concept map. All four tables soft-delete via `is_active`, except `sessions`, which
+records *when* a session died in `revoked_at` (ADR-0002).
+
+| Concept | Go type | Stored as | Invariants to enforce |
+| --- | --- | --- | --- |
+| Account | `store.Account` | `accounts` | integer PK; `email` lowercased and unique across active **and** inactive (ADR-0003); application role is `admin` when `is_admin`, else `user` (ADR-0004); only the secret **hash** is stored |
+| Session | `store.Session` | `sessions` | opaque public `id`; only the token **hash** is stored, unique (ADR-0002); `revoked_at`/`expires_at` gate "active"; `actor_account_id` names the admin behind an impersonation (else NULL) |
+| Game | `store.Game` | `games` | see the Game row above; `status` constrained to the lifecycle enum |
+| Member (seat) | `store.Member` | `game_account_role` | the boundary table; `player_id` is sequential within its game and **never reused** (`MAX(player_id)+1`, spanning active + inactive), immutable once assigned (ADR-0003); one seat per account per game; `account_id` is application-only, the engine addresses control by `player_id` |
 
 ## Invariants worth calling out
 
