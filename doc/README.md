@@ -19,7 +19,7 @@ relative path — relative paths break when rendered on GitHub.
 | [determinism.md](determinism.md) | The PRNG mechanism spec: seeds, streams, key paths, frozen surfaces, how to add a domain tag, golden vectors |
 | [counter-based-prng.md](counter-based-prng.md) | Why the determinism design looks the way it does — reasoning, prior art, trade-offs |
 | [decisions/](decisions/) | ADRs — one file per hard-to-reverse decision |
-| `api/` _(not yet committed)_ | The REST surface — spec-first `openapi.yaml` and `conventions.md`; landing once the v4 API contract is reconciled |
+| [api/](api/) | The REST surface — spec-first [openapi.yaml](api/openapi.yaml) (application surface drafted; engine deferred), [conventions.md](api/conventions.md), and the [v4 gap analysis](api/v4-gap-analysis.md) |
 
 Fine-grained reference lives in **godoc** (package `doc.go` files and doc
 comments next to the code). The Markdown here is the cross-cutting narrative
