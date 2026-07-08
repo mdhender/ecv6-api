@@ -158,6 +158,41 @@ func Backup(_ context.Context, dbPath, destPath string) error {
 	return nil
 }
 
+// Compact reclaims free space in the database at dbPath by running SQLite's
+// VACUUM in place: it rewrites the file, releasing pages freed by deletions and
+// defragmenting. VACUUM is transactional, so a crash leaves the original intact.
+//
+// Compact requires only that dbPath is a readable EC database; it does not check
+// the schema version, because compaction changes layout, not schema, and so is
+// safe on a database of any version. It returns ErrNotFound if the file is
+// missing and ErrNotEC if it is not an EC database.
+func Compact(_ context.Context, dbPath string) error {
+	if sb, err := os.Stat(dbPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%s: %w", dbPath, ErrNotFound)
+		}
+		return fmt.Errorf("%s: %w", dbPath, err)
+	} else if !sb.Mode().IsRegular() {
+		return fmt.Errorf("%s: %w", dbPath, ErrNotFound)
+	}
+	conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", dbPath, err)
+	}
+	defer conn.Close()
+	id, err := pragmaInt(conn, "application_id")
+	if err != nil {
+		return err
+	}
+	if int32(id) != appID {
+		return fmt.Errorf("%s: %w", dbPath, ErrNotEC)
+	}
+	if err := sqlitex.ExecuteTransient(conn, "VACUUM;", nil); err != nil {
+		return fmt.Errorf("vacuum %s: %w", dbPath, err)
+	}
+	return nil
+}
+
 // openReadOnly opens dbPath read-only after confirming it exists as a regular
 // file and carries our application_id.
 func openReadOnly(dbPath string) (*sqlite.Conn, error) {

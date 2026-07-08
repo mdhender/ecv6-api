@@ -68,6 +68,17 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		},
 	}
 
+	compactFlags := ff.NewFlagSet("compact").SetParent(rootFlags)
+	compactCmd := &ff.Command{
+		Name:      "compact",
+		Usage:     "ecdb compact PATH",
+		ShortHelp: "reclaim free space in the database in folder PATH (VACUUM in place)",
+		Flags:     compactFlags,
+		Exec: func(ctx context.Context, args []string) error {
+			return cmdCompact(ctx, log, args)
+		},
+	}
+
 	versionFlags := ff.NewFlagSet("version").SetParent(rootFlags)
 	versionCmd := &ff.Command{
 		Name:      "version",
@@ -126,7 +137,7 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		Subcommands: []*ff.Command{migrationUpCmd, migrationVersionCmd, migrationVerifyCmd},
 	}
 
-	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, backupCmd, versionCmd, migrationCmd)
+	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, backupCmd, compactCmd, versionCmd, migrationCmd)
 	return rootCmd, logging
 }
 
@@ -247,6 +258,41 @@ func backupName(t time.Time, version int, versionStamp bool) string {
 		name = fmt.Sprintf("%s-%d", name, version)
 	}
 	return name
+}
+
+// cmdCompact reclaims free space in the database in folder args[0] by running
+// VACUUM in place, and reports the before/after file size. It does not take a
+// backup first (ADR-0010); back up separately if you want a safety net.
+func cmdCompact(ctx context.Context, log *slog.Logger, args []string) error {
+	folder, err := requirePath("compact", args)
+	if err != nil {
+		return err
+	}
+	dbPath := filepath.Join(folder, store.DBName)
+	log.Debug("compact: starting", "path", dbPath)
+
+	before, err := fileSize(dbPath)
+	if err != nil {
+		return fmt.Errorf("compact: cannot access %s: %w", dbPath, err)
+	}
+	if err := store.Compact(ctx, dbPath); err != nil {
+		return fmt.Errorf("compact: cannot compact %s: %w", dbPath, err)
+	}
+	after, err := fileSize(dbPath)
+	if err != nil {
+		return fmt.Errorf("compact: cannot stat %s after compacting: %w", dbPath, err)
+	}
+	fmt.Fprintf(os.Stderr, "compacted %s (%d -> %d bytes, reclaimed %d)\n", dbPath, before, after, before-after)
+	return nil
+}
+
+// fileSize returns the size in bytes of the regular file at path.
+func fileSize(path string) (int64, error) {
+	sb, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return sb.Size(), nil
 }
 
 // cmdMigrationUp applies any missing migrations to the database in folder
