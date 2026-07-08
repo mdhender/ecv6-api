@@ -85,12 +85,26 @@ func (s *Server) Handler() http.Handler {
 	authed.handle(http.MethodPost, "/me/email", s.handleUpdateMyEmail)
 	authed.handle(http.MethodPost, "/me/secret", s.handleUpdateMySecret)
 
+	// The caller's own game memberships (openapi.yaml: listMyGames). Authenticated,
+	// scoped to the caller; a game-scoped read that stays off the account projection
+	// served by /me (ADR-0004).
+	authed.handle(http.MethodGet, "/me/games", s.handleListMyGames)
+
 	// Admin account management (openapi.yaml: listAccounts, createAccount,
 	// getAccount, updateAccount). Gated by requireAdmin on the admin group.
 	admin.handle(http.MethodGet, "/accounts", s.handleListAccounts)
 	admin.handle(http.MethodPost, "/accounts", s.handleCreateAccount)
 	admin.handle(http.MethodGet, "/accounts/{accountId}", s.handleGetAccount)
 	admin.handle(http.MethodPatch, "/accounts/{accountId}", s.handleUpdateAccount)
+
+	// Game catalog and lifecycle (openapi.yaml: listGames, createGame, getGame,
+	// updateGame). Listing and reading are authenticated (results filtered by
+	// visibility); creating is admin-only; updating is admin-or-active-GM, so it
+	// lives on the authenticated group with the role check in the handler.
+	authed.handle(http.MethodGet, "/games", s.handleListGames)
+	admin.handle(http.MethodPost, "/games", s.handleCreateGame)
+	authed.handle(http.MethodGet, "/games/{gameId}", s.handleGetGame)
+	authed.handle(http.MethodPatch, "/games/{gameId}", s.handleUpdateGame)
 
 	// A catch-all so an unknown path returns the JSON error envelope rather than
 	// net/http's plain-text 404.
