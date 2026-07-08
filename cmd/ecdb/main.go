@@ -97,12 +97,24 @@ func main() {
 		},
 	}
 
+	migrationUpFlags := ff.NewFlagSet("up").SetParent(migrationFlags)
+	migrationUpCmd := &ff.Command{
+		Name:      "up",
+		Usage:     "ecdb migration up PATH",
+		ShortHelp: "apply any missing migrations to the database in folder PATH",
+		Flags:     migrationUpFlags,
+		Exec: func(ctx context.Context, args []string) error {
+			cmdMigrationUp(ctx, args)
+			return nil
+		},
+	}
+
 	migrationCmd := &ff.Command{
 		Name:        "migration",
 		Usage:       "ecdb migration SUBCOMMAND ...",
-		ShortHelp:   "inspect and verify database migrations",
+		ShortHelp:   "apply, inspect, and verify database migrations",
 		Flags:       migrationFlags,
-		Subcommands: []*ff.Command{migrationVersionCmd, migrationVerifyCmd},
+		Subcommands: []*ff.Command{migrationUpCmd, migrationVersionCmd, migrationVerifyCmd},
 	}
 
 	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, versionCmd, migrationCmd)
@@ -150,6 +162,19 @@ func cmdCreate(ctx context.Context, args []string, overwrite bool) {
 		fail("create: cannot build database", "path", dbPath, "err", err)
 	}
 	slog.Info("created database", "path", dbPath, "version", store.ExpectedVersion())
+}
+
+// cmdMigrationUp applies any missing migrations to the database in folder
+// args[0].
+func cmdMigrationUp(ctx context.Context, args []string) {
+	if len(args) != 1 {
+		fail("migration up requires exactly one PATH argument")
+	}
+	dbPath := filepath.Join(args[0], store.DBName)
+	if err := store.MigrateUp(ctx, dbPath); err != nil {
+		fail("migration up: cannot apply migrations", "path", dbPath, "err", err)
+	}
+	slog.Info("migrations applied", "path", dbPath, "version", store.ExpectedVersion())
 }
 
 // cmdMigrationVersion logs the migration (schema) version of the database in

@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -82,5 +83,72 @@ func TestVerifyVersionMismatch(t *testing.T) {
 
 	if err := Verify(ctx, dbPath); !errors.Is(err, ErrVersionMismatch) {
 		t.Errorf("Verify error = %v, want ErrVersionMismatch", err)
+	}
+}
+
+// TestMigrateUpApplies drives the apply path: an empty EC database at version 0
+// is brought current.
+func TestMigrateUpApplies(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), DBName)
+
+	// Make an empty EC database — application_id set, no migrations applied.
+	conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite, sqlite.OpenCreate)
+	if err != nil {
+		t.Fatalf("OpenConn: %v", err)
+	}
+	if err := sqlitex.ExecuteTransient(conn, fmt.Sprintf("PRAGMA application_id = %d;", appID), nil); err != nil {
+		t.Fatalf("set application_id: %v", err)
+	}
+	_ = conn.Close()
+
+	if v, err := Version(ctx, dbPath); err != nil || v != 0 {
+		t.Fatalf("setup version = %d (err %v), want 0", v, err)
+	}
+	if err := MigrateUp(ctx, dbPath); err != nil {
+		t.Fatalf("MigrateUp: %v", err)
+	}
+	if v, err := Version(ctx, dbPath); err != nil || v != ExpectedVersion() {
+		t.Errorf("after MigrateUp version = %d (err %v), want %d", v, err, ExpectedVersion())
+	}
+}
+
+// TestMigrateUpIdempotent: running MigrateUp on an already-current database is a
+// successful no-op.
+func TestMigrateUpIdempotent(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), DBName)
+	if err := Create(ctx, dbPath); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := MigrateUp(ctx, dbPath); err != nil {
+		t.Errorf("MigrateUp on current database: %v", err)
+	}
+}
+
+func TestMigrateUpNotFound(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), DBName)
+	if err := MigrateUp(context.Background(), dbPath); !errors.Is(err, ErrNotFound) {
+		t.Errorf("MigrateUp error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestMigrateUpVersionAhead(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), DBName)
+	if err := Create(ctx, dbPath); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite)
+	if err != nil {
+		t.Fatalf("OpenConn: %v", err)
+	}
+	if err := sqlitex.ExecuteTransient(conn, "PRAGMA user_version = 999;", nil); err != nil {
+		t.Fatalf("bump user_version: %v", err)
+	}
+	_ = conn.Close()
+
+	if err := MigrateUp(ctx, dbPath); !errors.Is(err, ErrVersionMismatch) {
+		t.Errorf("MigrateUp error = %v, want ErrVersionMismatch", err)
 	}
 }

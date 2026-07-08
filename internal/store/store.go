@@ -100,6 +100,41 @@ func Verify(ctx context.Context, dbPath string) error {
 	return nil
 }
 
+// MigrateUp opens the existing database at dbPath and applies any missing
+// migrations. It never creates the database — that is create's job — so a
+// missing file returns ErrNotFound. If the database version is newer than this
+// build expects (an old binary against a newer schema), it returns
+// ErrVersionMismatch.
+func MigrateUp(ctx context.Context, dbPath string) error {
+	if sb, err := os.Stat(dbPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%s: %w", dbPath, ErrNotFound)
+		}
+		return fmt.Errorf("%s: %w", dbPath, err)
+	} else if !sb.Mode().IsRegular() {
+		return fmt.Errorf("%s: %w", dbPath, ErrNotFound)
+	}
+	// No OpenCreate: open the existing file, never make a new one.
+	conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", dbPath, err)
+	}
+	defer conn.Close()
+	if err := sqlitemigration.Migrate(ctx, conn, schema()); err != nil {
+		return fmt.Errorf("migrate %s: %w", dbPath, err)
+	}
+	// sqlitemigration silently no-ops when the database is ahead of the schema, so
+	// check explicitly: a version above ExpectedVersion means an old binary.
+	got, err := pragmaInt(conn, "user_version")
+	if err != nil {
+		return err
+	}
+	if want := ExpectedVersion(); got != want {
+		return fmt.Errorf("%w: database is version %d, this binary expects %d", ErrVersionMismatch, got, want)
+	}
+	return nil
+}
+
 // openReadOnly opens dbPath read-only after confirming it exists as a regular
 // file and carries our application_id.
 func openReadOnly(dbPath string) (*sqlite.Conn, error) {

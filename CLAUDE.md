@@ -19,19 +19,59 @@ snail-mail / play-by-email flow. When the original's rules and EC's docs disagre
 system.
 
 This is the **sixth iteration (v6)**; no earlier iteration ever launched a
-working API server, so treat inherited assumptions skeptically. There is **no
-committed Go source yet** — `doc/api/openapi-v4.yaml` is copied in from the failed
-v4 iteration and is **not yet reviewed**.
+working API server, so treat inherited assumptions skeptically. The Go module now
+exists — `cmd/ec` (server), `cmd/ecdb` (database admin), and `internal/store` have
+landed — and we are building the server out incrementally under the
+[Development rules](#development-rules). `doc/api/openapi-v4.yaml` is copied in
+from the failed v4 iteration and is **not yet reviewed**.
 
-> **Current phase: planning and documentation.** Do **not** write code, scaffold
-> packages, run migrations, or modify the API surface (including the v4 OpenAPI)
-> until explicitly asked. We are settling docs and design first.
+> **Current phase: building the server incrementally.** Follow the
+> [Development rules](#development-rules) below. The API surface is the exception:
+> `doc/api/openapi-v4.yaml` is still the **unreviewed** v4 baseline, so do not
+> implement handlers against it or change the API surface until it has been
+> reconciled and you are asked to.
 
 - Sibling repository: **`../docs`** (`github.com/mdhender/ecv6-docs`) — the Hugo
   documentation site. See [Relationship to the docs](#relationship-to-the-docs).
 - Expected module path (follow the sibling's convention when running
   `go mod init`): `github.com/mdhender/ecv6-api`.
 - Go 1.26+.
+
+## Development rules
+
+These rules are strict. Do not deviate from them without explicit approval.
+
+Rules 1, 2, and 4 are quality and release discipline for **all** code in this
+repo. Rule 3 (documentation) is a requirement on **game-engine features**
+specifically — the engine that implements the game's rules; the application,
+datastore, and API areas should be documented too, but are not yet held to it.
+
+No game rules exist yet (the rulebook is being built up rule by rule), so there is
+nothing to test at present. Once rules land, "green tests" means `go test ./...`
+passes.
+
+1. **All tests must be green before we push.** Run the full test suite and confirm
+   it passes before any `git push`. Never push with failing, skipped, or unrun
+   tests.
+2. **Fix all bugs before introducing new features.** Known bugs take priority over
+   new work. Do not start a new feature while there are open, unfixed bugs.
+3. **Every game-engine feature must be grounded in the rulebook and documented.**
+   Before implementing an engine feature, identify the game rule it implements in
+   the **rulebook** — the sibling ecv6-docs repo under `content/reference/`
+   (locally `../docs/content/reference/`; linked as
+   [ecv6-docs](https://github.com/mdhender/ecv6-docs/tree/main/content/reference)).
+   If the rule isn't there, stop and write (or request) it first — never build
+   engine behavior the rulebook doesn't ground. Then document the *implementation*
+   under `/doc` (see [Documentation structure](#documentation-structure)),
+   following Diataxis.
+4. **Bump the version before every push.** Bump `version.go`'s **Minor** (new
+   feature) or **Patch** (bug fix) so every commit pushed to the remote carries a
+   unique version; if it was already bumped since the last push, leave it as is.
+   Uniqueness is measured on `Version().Core()` (Major.Minor.Patch) — build
+   metadata does not count. We iterate frequently, so heavy version churn is
+   expected. **Pure-documentation commits are exempt** — a commit that changes
+   only docs (Markdown under `/doc`, `CLAUDE.md`, and the like; no Go source) needs
+   no bump. The version tracks code, not our internal documentation.
 
 ## Relationship to the docs
 
@@ -77,6 +117,27 @@ it"), the mirror of the docs repo's player/referee-facing rules. The discipline:
 down: wire formats, Go types, storage schema, package boundaries, engineering
 contracts.
 
+Four areas, by audience and home:
+
+- **Game** — the rulebook: player/referee-facing rules. Lives in the sibling
+  ecv6-docs repo (`content/reference/`), **not here**. Rule 3 above grounds engine
+  features in it.
+- **Engine** — how our code implements those rules (determinism, wire formats,
+  types, invariants). Ours, under `/doc` and godoc.
+- **Application** — running the server and managing the datastore. Ours, under
+  `/doc`.
+- **API** — the REST wire contract. Ours, spec-first under `/doc/api`.
+
+Our docs (engine, application, API) follow **Diataxis**: every page is exactly one
+of its four types — *tutorial* (learning by doing), *how-to* (achieving a stated
+goal), *reference* (austere description of what is or does), or *explanation*
+(context and why) — and never mixes them. Reference describes; explanation
+discusses; split a page that tries to do both. When writing or restructuring docs,
+use the `diataxis` skill.
+
+In **how-to and tutorial** examples, use `games/example` as the database path (the
+folder that holds `ec.db`), so runnable examples stay consistent across guides.
+
 Mediums:
 
 - **godoc is the reference truth.** Package overviews live in `doc.go`; type and
@@ -101,6 +162,8 @@ Layout:
 /doc/api/openapi.yaml     the wire contract (source of truth)
 /doc/api/conventions.md   auth, error envelope, versioning, idempotency
 /doc/decisions/           adr-NNNN-*.md
+/doc/how-to/              Diataxis how-to guides, e.g. create-and-verify-a-database.md
+/doc/reference/           Diataxis reference docs, e.g. database-management.md
 ```
 
 Determinism is a special case. Its mechanism (seeding math, key-path encoding,
