@@ -67,7 +67,6 @@ func (s *Server) Handler() http.Handler {
 	// authenticated (and, for admin, role-checked) by construction.
 	authed := &group{mux: mux, extra: []Middleware{s.requireAuth}}
 	admin := &group{mux: mux, extra: []Middleware{s.requireAuth, s.requireAdmin}}
-	_ = admin
 
 	// Public System endpoints (openapi.yaml: getHealth, getVersion).
 	public.handle(http.MethodGet, "/healthz", s.handleHealth)
@@ -78,6 +77,20 @@ func (s *Server) Handler() http.Handler {
 	// current session (or all of them).
 	public.handle(http.MethodPost, "/auth/login", s.handleLogin)
 	authed.handle(http.MethodPost, "/auth/logout", s.handleLogout)
+
+	// Self-service account endpoints (openapi.yaml: getMe, updateMe, updateMyEmail,
+	// updateMySecret). All authenticated; each returns the caller's own account.
+	authed.handle(http.MethodGet, "/me", s.handleGetMe)
+	authed.handle(http.MethodPatch, "/me", s.handleUpdateMe)
+	authed.handle(http.MethodPost, "/me/email", s.handleUpdateMyEmail)
+	authed.handle(http.MethodPost, "/me/secret", s.handleUpdateMySecret)
+
+	// Admin account management (openapi.yaml: listAccounts, createAccount,
+	// getAccount, updateAccount). Gated by requireAdmin on the admin group.
+	admin.handle(http.MethodGet, "/accounts", s.handleListAccounts)
+	admin.handle(http.MethodPost, "/accounts", s.handleCreateAccount)
+	admin.handle(http.MethodGet, "/accounts/{accountId}", s.handleGetAccount)
+	admin.handle(http.MethodPatch, "/accounts/{accountId}", s.handleUpdateAccount)
 
 	// A catch-all so an unknown path returns the JSON error envelope rather than
 	// net/http's plain-text 404.
