@@ -117,9 +117,11 @@ See [Determinism](#determinism--the-load-bearing-invariant).
 Use these terms exactly as the docs define them; they are the ubiquitous language
 of the codebase.
 
-- **Game** — the top-level unit of play. Has an id (a short JSON-safe,
-  space-free slug the GM chooses), a pair of `uint64` master seeds, and a current
-  turn. The cluster and the players belong to a game.
+- **Game** — the top-level unit of play. Identified by its **integer PK** (the
+  wire id `gameId`), with a human-facing `name` as its label; it also has a pair
+  of `uint64` master seeds and a current turn. The cluster and the players belong
+  to a game. (See [ADR-0003](doc/decisions/adr-0003-api-resource-identity.md); an
+  earlier GM-chosen-slug id was dropped. Upstream `games.md` still to reconcile.)
 - **Turn** — the unit a game advances by. **Turn 0** is setup (no turn, the zero
   value); play begins at **turn 1** and counts up. A turn's report describes the
   state at the *start* of the turn, before its orders are applied.

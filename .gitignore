@@ -12,3 +12,7 @@
 
 # OS / editor cruft
 .DS_Store
+
+# Inherited v4 OpenAPI — kept locally as the reconciliation baseline, not
+# committed. Recoverable from the v4 iteration on GitHub if needed.
+doc/api/openapi-v4.yaml
