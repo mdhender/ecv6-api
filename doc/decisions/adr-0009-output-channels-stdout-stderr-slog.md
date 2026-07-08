@@ -62,11 +62,15 @@ A program emits on three channels, each with one purpose:
   restricted to the long-running server, though the server's request lifecycle and
   background events will be its heaviest users once that logging lands.
 
-- **Context and loggers are parameters, not globals.** A component that needs a
-  `context.Context` or a logger receives them as explicit parameters (dependency
-  injection), rather than reaching for a package-level or global logger. This keeps
-  the dependency visible and the component testable, and lets a caller scope or
-  silence logging without global state.
+- **Anything that needs a logger accepts one; it does not reach for the global.**
+  A component that needs a `context.Context` or a logger receives it as an explicit
+  parameter, or holds it as a struct field, rather than calling the package-level
+  `slog` functions (`slog.Info`, …) that use the default logger. This keeps the
+  dependency visible and the component testable, and lets a caller scope or silence
+  logging without global state. The standard library ships a global default logger
+  and we live with that — in fact we install our configured logger *as* the default
+  (`slog.SetDefault`) so any call site we miss is still correctly filtered — but the
+  default is a backstop, not the wiring path. Correctness never depends on it.
 
 These channels are not mutually exclusive: the same error can be **logged** via
 `slog` (so there is a durable record it occurred) and, when it is terminal for the
@@ -97,7 +101,9 @@ The level governs only the `slog` channel — it never changes what a command wr
 to stdout (results) or stderr (error reports); a quiet command stays quiet on
 stdout regardless of level. The logger is constructed in `internal/cli` (over a
 `slog.LevelVar` set to the resolved level), writes to stderr, and is passed into
-the command tree as a parameter; there is no global logger. Handler format
+the command tree as a parameter; it is also installed with `slog.SetDefault` so
+that any call site that slips through to the package-level `slog` functions is
+still filtered correctly (the backstop described above). Handler format
 (text vs JSON) is out of scope here and defaults to text.
 
 ## Consequences
@@ -109,8 +115,10 @@ the command tree as a parameter; there is no global logger. Handler format
   [database how-to](../how-to/create-and-verify-a-database.md) and
   [reference](../reference/database-management.md) already reflect the stdout/stderr
   behavior.
-- Passing context and loggers as parameters means logging can be wired in later
-  without a global; the signature makes the need explicit at each call site.
+- Accepting context and loggers as parameters (or struct fields) makes the
+  dependency explicit at each call site and keeps components testable; the global
+  default is a filtered backstop for missed sites, not something correctness leans
+  on.
 - No `slog` logging exists yet. This ADR fixes the boundary now so that when it
   lands it flows through parameters and stays off stdout/stderr, rather than being
   bolted on and re-triggering the churn.
