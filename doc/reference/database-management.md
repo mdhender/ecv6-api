@@ -25,8 +25,11 @@ missing, `ec` fails. Create the database with `ecdb` before the first `ec` start
 
 ## Commands
 
-Each command takes `PATH`, the folder that holds (or will hold) `ec.db`. All
-diagnostic output is written to standard error via `slog`.
+Each command takes `PATH`, the folder that holds (or will hold) `ec.db`. Status
+and error messages are plain, human-readable text written to standard error; a
+failing command prints `ecdb: <message>` and exits non-zero. The one exception is
+`migration version`, which writes its result — a bare integer — to standard output
+so scripts can capture it.
 
 ### `ecdb create [--overwrite] PATH`
 
@@ -49,7 +52,9 @@ Applies any migrations the database is missing. Never creates a database.
 
 ### `ecdb migration version PATH`
 
-Logs the database's version and the binary's expected version. Read-only.
+Prints the database's schema version as a bare integer to standard output.
+Read-only. It does not print the binary's expected version; use `migration verify`
+to compare the two.
 
 - Fails if the folder or `ec.db` does not exist, or the file is not an EC database.
 

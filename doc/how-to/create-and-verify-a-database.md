@@ -16,18 +16,19 @@ that will hold it, not the filename:
 ```
 $ mkdir -p games/example
 $ ecdb create games/example
-time=2026-07-08T09:41:15-05:00 level=INFO msg="created database" path=games/example/ec.db version=1
+created database games/example/ec.db (version 1)
 ```
 
-`ecdb` created `games/example/ec.db` and applied every migration. `version=1` is the
-schema version it reached — the number of migrations applied.
+`ecdb` created `games/example/ec.db` and applied every migration. `version 1` is the
+schema version it reached — the number of migrations applied. This message is
+written to standard error.
 
 The folder must already exist. Pointing `create` at a missing folder fails without
-creating anything:
+creating anything, printing the error to standard error and exiting non-zero:
 
 ```
 $ ecdb create games/missing
-time=... level=ERROR msg="create: cannot access PATH" path=games/missing err="stat games/missing: no such file or directory"
+ecdb: create: cannot access PATH games/missing: stat games/missing: no such file or directory
 ```
 
 Creating a database is `ecdb`'s job alone. The server, `ec`, opens an existing
@@ -40,15 +41,15 @@ If `ec.db` already exists, `create` refuses to touch it and exits non-zero:
 
 ```
 $ ecdb create games/example
-time=... level=ERROR msg="create: database already exists (pass --overwrite to replace it)" path=games/example/ec.db
+ecdb: create: database already exists (pass --overwrite to replace it): games/example/ec.db
 ```
 
 To discard the old database and build a fresh one, pass `--overwrite`:
 
 ```
 $ ecdb create --overwrite games/example
-time=... level=INFO msg="create: removed existing database" path=games/example/ec.db
-time=... level=INFO msg="created database" path=games/example/ec.db version=1
+removed existing database games/example/ec.db
+created database games/example/ec.db (version 1)
 ```
 
 `--overwrite` deletes the existing `ec.db` and its `-wal`/`-shm`/`-journal`
@@ -65,7 +66,7 @@ to the current schema with `migration up`:
 
 ```
 $ ecdb migration up games/example
-time=... level=INFO msg="migrations applied" path=games/example/ec.db version=1
+migrations applied to games/example/ec.db (version 1)
 ```
 
 It applies every migration the database is missing and reports the version it
@@ -76,7 +77,7 @@ fails — run `ecdb create` first:
 
 ```
 $ ecdb migration up games/missing
-time=... level=ERROR msg="migration up: cannot apply migrations" path=games/missing/ec.db err="games/missing/ec.db: database not found"
+ecdb: migration up: cannot apply migrations to games/missing/ec.db: games/missing/ec.db: database not found
 ```
 
 If the database's version is newer than the binary — you are running an old `ecdb`
@@ -86,16 +87,18 @@ down" (see the [database management reference](../reference/database-management.
 
 ## Check the version
 
-To read a database's schema version, use `migration version`:
+To read a database's schema version, use `migration version`. It prints just the
+version — a plain integer on standard output, with nothing else — so you can
+capture it in a script:
 
 ```
 $ ecdb migration version games/example
-time=... level=INFO msg="migration version" path=games/example/ec.db version=1 expected=1
+1
 ```
 
-`version` is what the database records; `expected` is what this `ecdb` build wants.
-They should match. If `version` is higher than `expected`, your binary is older
-than the database's schema — rebuild the binaries.
+That number is what the database records. It does not tell you whether the
+database matches what your binary expects; for a pass/fail comparison against the
+binary's expected version, use `migration verify` (below).
 
 ## Verify the version in a script
 
@@ -105,7 +108,7 @@ its exit status:
 
 ```
 $ ecdb migration verify games/example
-time=... level=INFO msg="verify ok" path=games/example/ec.db version=1
+verified games/example/ec.db (version 1)
 $ echo $?
 0
 ```
