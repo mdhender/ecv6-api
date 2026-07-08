@@ -19,6 +19,7 @@ const (
 	codeUnauthorized = "unauthorized"
 	codeForbidden    = "forbidden"
 	codeBadRequest   = "bad_request"
+	codeConflict     = "conflict"
 )
 
 // writeJSON renders v as an indented JSON body with the given status code and the
