@@ -56,3 +56,25 @@ source-mutating option) to `ecdb backup`.
   issue #8 rather than this decision.
 - **Not a frozen surface.** These are CLI-shape choices, revisable at any time; they
   touch neither on-disk format nor the determinism contract (ADR-0001).
+
+## Addendum (2026-07-08): the command chooses the backup file name
+
+[Issue #10](https://github.com/mdhender/ecv6-api/issues/10) revisited how backups
+are named, which surfaced a design point worth recording alongside the backup
+decision above.
+
+`ecdb backup` chooses the backup file name (`ec.db.<timestamp-utc>`); the caller
+cannot supply one. This is partly ergonomic but mostly a **safety** measure: a
+backup that shared the live `ec.db` name could be mistaken for the database and, for
+example, migrated or served by accident. Keeping backups off the `ec.db` name
+prevents that. The trade-off is that a backup's schema version is not obvious from
+its name.
+
+To recover that without weakening the invariant, `backup` gains an opt-in
+`--version-stamp` flag (default off). When set, it appends the migration (schema)
+version — `ec.db.<timestamp-utc>-<version>` — so a backup states which schema it
+holds (useful when matching a backup to a binary during an upgrade or rollback; see
+the [upgrade how-to](../how-to/upgrade-ec-and-ecdb.md)). The version is the
+database's `user_version`, not the application's release version. The caller still
+never supplies a name; the flag only toggles a fixed suffix the command applies
+itself.

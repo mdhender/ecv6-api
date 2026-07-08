@@ -44,7 +44,7 @@ Creates `PATH/ec.db` and applies all migrations. `PATH` must be an existing fold
 - `--overwrite` deletes the existing `ec.db` and its `-wal`/`-shm`/`-journal`
   sidecar files before creating a new one. It is destructive and cannot be undone.
 
-### `ecdb backup [--output-path DIR] PATH`
+### `ecdb backup [--output-path DIR] [--version-stamp] PATH`
 
 Writes a consistent, defragmented single-file copy of `PATH/ec.db` and prints the
 copy's full path to standard output.
@@ -55,9 +55,16 @@ copy's full path to standard output.
   that is missing, not an EC database, or not current, so you never capture a stale
   or foreign file. To snapshot *before* applying new migrations, back up while the
   database is still current (before upgrading the binary that introduces them).
-- **The backup file name is chosen by `ecdb`, never the caller.** It is always
+- **The backup file name is chosen by `ecdb`, never the caller.** It is
   `ec.db.<timestamp-utc>`, a filesystem-safe, sortable UTC stamp — for example
-  `ec.db.20260708T190345Z`.
+  `ec.db.20260708T190345Z`. Choosing the name (rather than accepting one) also keeps
+  a backup from being mistaken for a live `ec.db` and, say, migrated by accident.
+- **`--version-stamp`** appends the migration (schema) version to that name, giving
+  `ec.db.<timestamp-utc>-<version>` — for example `ec.db.20260708T190345Z-1`. The
+  version is the database's `user_version` (equal to the binary's expected version,
+  since the source must be current), *not* the application's release version. Off by
+  default. Use it when you want a backup's schema to be obvious from its name, such
+  as before an upgrade.
 - **`--output-path DIR`** selects the folder the backup is written into. It
   defaults to `PATH` (beside the source database) and must be an existing folder,
   not a file name.

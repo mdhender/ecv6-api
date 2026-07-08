@@ -28,11 +28,12 @@ $ ecdb version
 Take a snapshot with the **current** `ecdb`, while the database still matches it.
 `ecdb backup` refuses a database that is not at its expected version, so once the
 new binaries are in place they will not back up the *old* schema — this is why the
-backup comes first:
+backup comes first. Pass `--version-stamp` so the backup's name records the schema
+version you are leaving, which makes it easy to find if you roll back:
 
 ```
-$ ecdb backup games/example
-games/example/ec.db.20260708T190345Z
+$ ecdb backup --version-stamp games/example
+games/example/ec.db.20260708T190345Z-1
 ```
 
 Keep the path it prints; that file is your rollback point.
