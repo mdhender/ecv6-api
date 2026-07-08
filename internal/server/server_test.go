@@ -152,29 +152,3 @@ func TestRecovery(t *testing.T) {
 		t.Errorf("code = %q, want %q", got.Error.Code, codeInternal)
 	}
 }
-
-// TestRequireAuthPlaceholderDenies confirms the authenticated-group placeholder
-// is fail-closed: it denies before ever reaching the wrapped handler.
-func TestRequireAuthPlaceholderDenies(t *testing.T) {
-	reached := false
-	inner := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true })
-	h := chain(inner, withRequestID, requireAuth)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/whatever", nil)
-	h.ServeHTTP(rec, req)
-
-	if reached {
-		t.Fatal("requireAuth let the request through")
-	}
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", rec.Code)
-	}
-	var got api.Error
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if got.Error.Code != codeUnauthorized {
-		t.Errorf("code = %q, want %q", got.Error.Code, codeUnauthorized)
-	}
-}

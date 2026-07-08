@@ -61,17 +61,23 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	public := &group{mux: mux}
-	// authenticated and admin add credential checks on top of the base chain.
-	// No routes hang off them yet (auth lands in a later issue); requireAuth and
-	// requireAdmin are placeholders that deny until then, so any route later
-	// registered on these groups is fail-closed by construction.
-	authed := &group{mux: mux, extra: []Middleware{requireAuth}}
-	admin := &group{mux: mux, extra: []Middleware{requireAuth, requireAdmin}}
-	_, _ = authed, admin
+	// authenticated and admin add credential checks on top of the base chain:
+	// requireAuth resolves the bearer token to an account (ADR-0002) and requireAdmin
+	// gates on the application role. Any route registered on these groups is
+	// authenticated (and, for admin, role-checked) by construction.
+	authed := &group{mux: mux, extra: []Middleware{s.requireAuth}}
+	admin := &group{mux: mux, extra: []Middleware{s.requireAuth, s.requireAdmin}}
+	_ = admin
 
 	// Public System endpoints (openapi.yaml: getHealth, getVersion).
 	public.handle(http.MethodGet, "/healthz", s.handleHealth)
 	public.handle(http.MethodGet, "/version", s.handleVersion)
+
+	// Auth endpoints (openapi.yaml: login, logout). Login is public — it exchanges
+	// credentials for a token; logout is authenticated — it revokes the caller's
+	// current session (or all of them).
+	public.handle(http.MethodPost, "/auth/login", s.handleLogin)
+	authed.handle(http.MethodPost, "/auth/logout", s.handleLogout)
 
 	// A catch-all so an unknown path returns the JSON error envelope rather than
 	// net/http's plain-text 404.
