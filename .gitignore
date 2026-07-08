@@ -20,6 +20,12 @@
 .env.local
 .env.*.local
 
+# SQLite databases built by `ecdb create` (and their sidecar files). These are
+# disposable build products, rebuilt from data files; the data folders (e.g.
+# data/claude, data/alpha) may still hold committed input files.
+ec.db
+ec.db-*
+
 # OS / editor cruft
 .DS_Store
 
