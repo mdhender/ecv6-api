@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	ecv6 "github.com/mdhender/ecv6-api"
 	"github.com/mdhender/ecv6-api/internal/cli"
@@ -51,6 +52,18 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		Flags:     createFlags,
 		Exec: func(ctx context.Context, args []string) error {
 			return cmdCreate(ctx, log, args, *overwrite)
+		},
+	}
+
+	backupFlags := ff.NewFlagSet("backup").SetParent(rootFlags)
+	outputPath := backupFlags.StringLong("output-path", "", "folder to write the backup into (default: the database's folder)")
+	backupCmd := &ff.Command{
+		Name:      "backup",
+		Usage:     "ecdb backup [FLAGS] PATH",
+		ShortHelp: "back up the database in folder PATH to a timestamped copy",
+		Flags:     backupFlags,
+		Exec: func(ctx context.Context, args []string) error {
+			return cmdBackup(ctx, log, args, *outputPath)
 		},
 	}
 
@@ -112,7 +125,7 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		Subcommands: []*ff.Command{migrationUpCmd, migrationVersionCmd, migrationVerifyCmd},
 	}
 
-	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, versionCmd, migrationCmd)
+	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, backupCmd, versionCmd, migrationCmd)
 	return rootCmd, logging
 }
 
@@ -166,6 +179,62 @@ func cmdCreate(ctx context.Context, log *slog.Logger, args []string, overwrite b
 	}
 	fmt.Fprintf(os.Stderr, "created database %s (version %d)\n", dbPath, store.ExpectedVersion())
 	return nil
+}
+
+// cmdBackup writes a consistent copy of the database in folder args[0] to a
+// timestamped file. The backup file is always named ec.db.<timestamp-utc>; the
+// caller chooses only the destination folder (--output-path, defaulting to the
+// database's own folder), never the file name. See ADR-0010.
+func cmdBackup(ctx context.Context, log *slog.Logger, args []string, outputPath string) error {
+	folder, err := requirePath("backup", args)
+	if err != nil {
+		return err
+	}
+	dbPath := filepath.Join(folder, store.DBName)
+
+	// Verify before backing up: refuse to snapshot a database that is missing, not
+	// an EC database, or not current. This is deliberate (ADR-0010 / issue #1) —
+	// the version must match exactly, so we never capture a stale or foreign file.
+	if err := store.Verify(ctx, dbPath); err != nil {
+		return fmt.Errorf("backup: cannot verify %s: %w", dbPath, err)
+	}
+
+	// Default the destination folder to the database's own folder.
+	if outputPath == "" {
+		outputPath = folder
+	}
+	if sb, err := os.Stat(outputPath); err != nil {
+		return fmt.Errorf("backup: cannot access --output-path %s: %w", outputPath, err)
+	} else if !sb.IsDir() {
+		return fmt.Errorf("backup: --output-path is not a folder: %s", outputPath)
+	}
+
+	destPath := filepath.Join(outputPath, backupName(time.Now()))
+	log.Debug("backup: starting", "src", dbPath, "dest", destPath)
+
+	// Best-effort friendly pre-check; store.Backup's VACUUM INTO is the authority
+	// and also refuses to overwrite an existing file (ADR-0008).
+	if _, err := os.Stat(destPath); err == nil {
+		return fmt.Errorf("backup: destination already exists: %s", destPath)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("backup: cannot access destination %s: %w", destPath, err)
+	}
+
+	if err := store.Backup(ctx, dbPath, destPath); err != nil {
+		return fmt.Errorf("backup: cannot copy %s: %w", dbPath, err)
+	}
+	// The backup path is the command's result: print it to stdout so scripts can
+	// capture it (ADR-0009).
+	fmt.Println(destPath)
+	return nil
+}
+
+// backupName returns the fixed backup file name for the given time: ec.db.
+// followed by a filesystem-safe, lexicographically sortable UTC stamp
+// (ISO 8601 basic, e.g. ec.db.20260708T183245Z). The trailing Z is appended
+// literally rather than via a layout token to avoid timezone-formatting quirks.
+func backupName(t time.Time) string {
+	return store.DBName + "." + t.UTC().Format("20060102T150405") + "Z"
 }
 
 // cmdMigrationUp applies any missing migrations to the database in folder
