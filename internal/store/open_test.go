@@ -41,7 +41,7 @@ func TestOpenTemporary(t *testing.T) {
 		t.Errorf("insert into accounts: %v", err)
 	}
 	// Foreign keys actually bite: a membership for a missing game is rejected.
-	err = sqlitex.ExecuteTransient(conn, "INSERT INTO game_account_role (game_id, account_id) VALUES (999, 1);", nil)
+	err = sqlitex.ExecuteTransient(conn, "INSERT INTO game_account_role (game_id, player_id, account_id) VALUES (999, 1, 1);", nil)
 	if err == nil {
 		t.Error("insert with dangling game_id succeeded; foreign keys not enforced")
 	}
