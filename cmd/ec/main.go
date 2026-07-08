@@ -30,12 +30,28 @@ func main() {
 func newRootCommand() (*ff.Command, *cli.Logging) {
 	rootFlags := ff.NewFlagSet("ec")
 	logging := cli.NewLogging(rootFlags)
+	log := logging.Logger
 	rootCmd := &ff.Command{
 		Name:      "ec",
 		Usage:     "ec [FLAGS] SUBCOMMAND ...",
 		ShortHelp: "run the Epimethean Challenge server",
 		Flags:     rootFlags,
 	}
+
+	serveFlags := ff.NewFlagSet("serve").SetParent(rootFlags)
+	dataDir := serveFlags.StringLong("data", "", "folder holding the database (ec.db); or set EC_DATA")
+	listen := serveFlags.StringLong("listen", ":8080", "TCP address the server listens on")
+	dev := serveFlags.BoolLong("dev", "enable development-only affordances")
+	serveCmd := &ff.Command{
+		Name:      "serve",
+		Usage:     "ec serve [FLAGS]",
+		ShortHelp: "open the existing database and run the API server",
+		Flags:     serveFlags,
+		Exec: func(ctx context.Context, _ []string) error {
+			return cmdServe(ctx, log, *dataDir, *listen, *dev)
+		},
+	}
+	rootCmd.Subcommands = append(rootCmd.Subcommands, serveCmd)
 
 	versionFlags := ff.NewFlagSet("version").SetParent(rootFlags)
 	versionCmd := &ff.Command{

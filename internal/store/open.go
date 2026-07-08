@@ -146,6 +146,20 @@ func (db *DB) Put(conn *sqlite.Conn) {
 	db.pool.Put(conn)
 }
 
+// SchemaVersion returns the open store's schema version — SQLite's user_version
+// pragma, equal to the number of migrations applied. Because a DB is only
+// returned once its version has been confirmed to equal ExpectedVersion, this
+// normally matches ExpectedVersion; it is read live so callers report the
+// database's own value rather than the build's expectation.
+func (db *DB) SchemaVersion(ctx context.Context) (int, error) {
+	conn, err := db.pool.Get(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("schema version: %w", err)
+	}
+	defer db.pool.Put(conn)
+	return pragmaInt(conn, "user_version")
+}
+
 // Close releases every connection in the pool. For a temporary store this
 // discards the in-memory database.
 func (db *DB) Close() error {
