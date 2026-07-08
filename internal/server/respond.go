@@ -17,6 +17,7 @@ const (
 	codeInternal     = "internal_error"
 	codeNotFound     = "not_found"
 	codeUnauthorized = "unauthorized"
+	codeForbidden    = "forbidden"
 	codeBadRequest   = "bad_request"
 )
 
@@ -49,6 +50,24 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, messag
 		body.Error.RequestId = &id
 	}
 	writeJSON(w, r, status, body)
+}
+
+// maxRequestBody caps a decoded JSON request body (1 MiB) so a malicious or
+// broken client cannot exhaust memory. No application-domain request is remotely
+// this large.
+const maxRequestBody = 1 << 20
+
+// decodeJSON reads the request body into v as JSON. On success it returns true;
+// on a malformed or oversized body it writes the standard 400 envelope and
+// returns false, so callers can `if !decodeJSON(...) { return }`.
+func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(v); err != nil {
+		writeError(w, r, http.StatusBadRequest, codeBadRequest, "request body is not valid JSON")
+		return false
+	}
+	return true
 }
 
 // logger returns the request-scoped logger if one was installed by the logging
