@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -93,6 +94,12 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 		if !account.IsActive {
 			writeError(w, r, http.StatusUnauthorized, codeUnauthorized, "invalid or expired session")
 			return
+		}
+		// An impersonation session carries the acting admin in Actor; surface the
+		// effective (impersonated) subject on the response so every call made with
+		// the token is visibly attributed, and the acting is auditable (ADR-0002).
+		if session.Actor != 0 {
+			w.Header().Set("Impersonated-Subject", strconv.FormatInt(account.ID, 10))
 		}
 		ctx := withAuth(r.Context(), authInfo{account: account, session: session})
 		next.ServeHTTP(w, r.WithContext(ctx))

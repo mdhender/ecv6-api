@@ -17,6 +17,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/mdhender/ecv6-api/internal/store"
@@ -42,6 +43,12 @@ type Server struct {
 	db      *store.DB
 	log     *slog.Logger
 	version string
+
+	// shutdown is closed once to request the same graceful drain as an interrupt
+	// signal; Run selects on it alongside the run context. shutdownOnce guards the
+	// close so a duplicate trigger (e.g. two admin requests) is a safe no-op.
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 // New builds a Server. db is an already-open store (cmd/ec opens it; the server
@@ -51,7 +58,14 @@ func New(cfg Config, db *store.DB, logger *slog.Logger, version string) *Server 
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{cfg: cfg, db: db, log: logger, version: version}
+	return &Server{cfg: cfg, db: db, log: logger, version: version, shutdown: make(chan struct{})}
+}
+
+// triggerShutdown requests a graceful shutdown, waking Run to drain in-flight
+// requests and stop — the same path an interrupt signal takes. It is safe to call
+// more than once; only the first call has any effect.
+func (s *Server) triggerShutdown() {
+	s.shutdownOnce.Do(func() { close(s.shutdown) })
 }
 
 // Handler builds the routed http.Handler: an http.ServeMux whose routes are
@@ -114,6 +128,13 @@ func (s *Server) Handler() http.Handler {
 	// Admin session maintenance (openapi.yaml: purgeSessions). Hard-deletes expired
 	// session records on demand; admin only.
 	admin.handle(http.MethodPost, "/admin/sessions/purge", s.handlePurgeSessions)
+
+	// Admin operational endpoints (openapi.yaml: shutdownServer, createImpersonation).
+	// Gated by requireAdmin. Shutdown drains and stops the process (dev mode only);
+	// impersonation mints a short-lived session bearing a target account's identity
+	// while recording the admin as the auditable actor (ADR-0002).
+	admin.handle(http.MethodPost, "/admin/shutdown", s.handleShutdown)
+	admin.handle(http.MethodPost, "/admin/impersonation", s.handleCreateImpersonation)
 
 	// Game catalog and lifecycle (openapi.yaml: listGames, createGame, getGame,
 	// updateGame). Listing and reading are authenticated (results filtered by
@@ -179,12 +200,25 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		return err
 	case <-ctx.Done():
-		s.log.InfoContext(ctx, "server shutting down")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return err
-		}
-		return nil
+		// Interrupt signal (SIGINT/SIGTERM): drain and stop.
+		return s.drain(ctx, srv)
+	case <-s.shutdown:
+		// Admin-requested shutdown (POST /admin/shutdown): the same drain path.
+		return s.drain(ctx, srv)
 	}
+}
+
+// drain gracefully stops srv, letting in-flight requests finish (up to a fixed
+// deadline) before returning. It backs both the interrupt-signal and the
+// admin-requested shutdown paths. The 202 already written by the shutdown handler
+// is one such in-flight request, so it reaches the client before the process
+// exits.
+func (s *Server) drain(ctx context.Context, srv *http.Server) error {
+	s.log.InfoContext(ctx, "server shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	return nil
 }
