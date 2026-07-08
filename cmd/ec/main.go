@@ -8,30 +8,24 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
 	ecv6 "github.com/mdhender/ecv6-api"
-	"github.com/mdhender/ecv6-api/internal/dotenv"
+	"github.com/mdhender/ecv6-api/internal/cli"
 	"github.com/peterbourgon/ff/v4"
-	"github.com/peterbourgon/ff/v4/ffhelp"
 )
 
 func main() {
-	// Load .env files before parsing flags so ff reads EC_* variables sourced
-	// from them. EC_ENV selects which files load (see dotenv) and is read
-	// straight from the environment — not a flag — because it must be known
-	// before any flag is parsed. It defaults to development.
-	env := os.Getenv("EC_ENV")
-	if env == "" {
-		env = "development"
-	}
-	if err := dotenv.Load(env); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "error: load %q environment: %v\n", env, err)
+	if err := cli.LoadEnv("EC"); err != nil {
+		fmt.Fprintf(os.Stderr, "ec: %v\n", err)
 		os.Exit(1)
 	}
+	os.Exit(cli.Run(context.Background(), newRootCommand(), "EC", os.Args[1:]))
+}
 
+// newRootCommand builds the ec command tree.
+func newRootCommand() *ff.Command {
 	rootFlags := ff.NewFlagSet("ec")
 	rootCmd := &ff.Command{
 		Name:      "ec",
@@ -52,13 +46,5 @@ func main() {
 		},
 	}
 	rootCmd.Subcommands = append(rootCmd.Subcommands, versionCmd)
-
-	err := rootCmd.ParseAndRun(context.Background(), os.Args[1:], ff.WithEnvVarPrefix("EC"))
-	switch {
-	case errors.Is(err, ff.ErrHelp), errors.Is(err, ff.ErrNoExec):
-		fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Command(rootCmd))
-	case err != nil:
-		fmt.Fprintf(os.Stderr, "ec: %v\n", err)
-		os.Exit(1)
-	}
+	return rootCmd
 }
