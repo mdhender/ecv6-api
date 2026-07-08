@@ -34,11 +34,11 @@ Each gap carries an **Area**:
 | [G2](#g2--openapi-30--31) | Cross-cutting | Mechanical | **Resolved (ADR-0006):** OpenAPI 3.0.3 + oapi-codegen; `nullable: true` stays |
 | [G3](#g3--path-versioning--host) | Cross-cutting | Mechanical | **Resolved (ADR-0006):** unversioned routes under `/api` (no `/v1`) |
 | [G4](#g4--sessionjwtrefreshimpersonation-stack-is-unratified) | Application | Design | **Resolved (ADR-0002):** opaque server-side session tokens, bearer transport; JWT/refresh dropped |
-| [G5](#g5--accountid-as-the-game-side-key-boundary-leak) | Game | Design | `accountId` keys game-scoped routes — domain-boundary leak |
+| [G5](#g5--accountid-as-the-game-side-key-boundary-leak) | Game | Design | **Partly resolved:** roster routes keyed by `playerId`; orders/turns addressing deferred to engine |
 | [G6](#g6--flat-global-roles-conflate-app-and-per-game-roles) | Application | Design | **Resolved (ADR-0004):** app roles are only `admin`/`user`; gm/player are per-game; `/me` is account-only |
 | [G7](#g7--game-code-vs-slug-id) | Cross-cutting | Design | **Resolved (ADR-0003):** game keyed by integer PK; `code`/slug dropped, `name` is the label |
 | [G8](#g8--username-vs-email) | Application | Design | **Resolved (ADR-0003):** identify by lowercased `email`; `username` dropped, `displayName` kept |
-| [G9](#g9--turn-model-is-foreign) | Game | Design | Surrogate `turnId` + wall-clock deadline + statuses vs turn-number-as-time |
+| [G9](#g9--turn-identity-vs-operational-metadata) | Game | Design | **Reframed:** turn id == turn number (settled, not a gap); only operational metadata (label/status/due-date) is an open Phase-4 question |
 | [G10](#g10--no-player-seat-id) | Game | Design | **Resolved (ADR-0003):** immutable sequential `player_id`; `handle` + rename dropped |
 | [G11](#g11--no-cluster--system--faction-read-surface) | Game | Gap | No read surface for the map or factions at all |
 
@@ -125,8 +125,13 @@ Where v4 predates an adopted decision. These do **not** survive the port intact.
 - **Lost / must change:** v4's URL structure would bake an `account_id` leak
   into the engine-facing wire. Member/order addressing must be **rewritten to
   `player_id`**, not ported.
-- **Disposition:** the most important design correction. Requires G10 (a real
-  player id) to exist first.
+- **Disposition:** **Partly resolved.** The **membership** surface is corrected:
+  with `player_id` now real (G10, ADR-0003), the roster route is keyed
+  `/games/{gameId}/members/{playerId}` (not `{accountId}`), and `accountId`
+  survives only as an explicitly app-side field on the `Member` body — no leak
+  into an engine-facing path. **Remaining:** the **orders/turns** routes must
+  likewise address by `player_id`; they are unwritten (Phase 4, engine), so this
+  closes with G9/G11.
 
 ### G6 — Flat global `roles` conflate app and per-game roles
 *(Application · Design)*
@@ -176,23 +181,30 @@ Where v4 predates an adopted decision. These do **not** survive the port intact.
   Identify by **`email`**, stored lowercased and unique; `username` dropped. A
   separate optional **`displayName`** is kept as a human label.
 
-### G9 — Turn model is foreign
+### G9 — Turn identity vs operational metadata
 *(Game · Design)*
 
-- **v4:** turns have a surrogate `turnId`, a wall-clock `ordersDueAt` deadline,
-  a free-text `label` ("Spring 901"), and `TurnStatus`
-  (`open/locked/processing/published`).
-- **Adopted:** the **turn number is the axis of time** — turn 0 is setup, play
-  counts up, historical reads take an `asOf` turn, and there is **no wall-clock,
-  no audit/event stream** (`CLAUDE.md` temporal model;
+- **v4:** `Turn = { id, gameId, label, status, ordersDueAt }` — an int64 `id`
+  scoped to its game, a display `label` ("Spring 901"), a `TurnStatus`
+  (`open/locked/processing/published`), and a wall-clock `ordersDueAt`.
+- **Adopted:** a turn is identified by its **number** — sequential per game,
+  turn 0 = setup — and that number is the effective-date axis for `asOf` reads
+  (`CLAUDE.md` temporal model;
   [`storing-state-as-timebound-facts.md`](../storing-state-as-timebound-facts.md)).
-  A turn's report describes state at the *start* of the turn.
-- **Lost / must change:** the surrogate id, the deadline field, and the status
-  enum are foreign to our model and would be reworked, not ported. Lower stakes
-  now — the whole turns/orders surface was `501`-stubbed in v4.
-- **Disposition:** defer with the rest of the engine surface (second pass), but
-  record that the turn is addressed by **number**, not a surrogate id, and
-  carries no wall-clock deadline on the engine side.
+- **Not a conflict — the earlier framing was wrong.** "Turn id" and "turn
+  number" are the **same value**: v4 addresses turns at
+  `/games/{gameId}/turns/{turnId}`, i.e. by number scoped to the game — exactly
+  the adopted model. There is no surrogate key; the "surrogate `turnId`" reading
+  was an unsupported inference from v4 pairing `id` with a `label`. Turn identity
+  needs no change, and no `turnId` appears in the drafted spec (turns weren't
+  drafted).
+- **What is actually open:** the **operational metadata** v4 attaches to a turn —
+  `label`, `status`, and the wall-clock `ordersDueAt`. None conflicts with the
+  temporal model (an orders-due date is application-side scheduling, not the
+  effective-date axis), but whether our turns expose any of them is undecided.
+- **Disposition:** turn **identity/addressing is settled** (by number) — no
+  action. Whether a turn carries operational metadata is a Phase-4 feature
+  choice, decided with the engine/turns surface.
 
 ### G10 — No player-seat id
 *(Game · Design)*
