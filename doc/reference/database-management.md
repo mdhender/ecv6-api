@@ -79,6 +79,31 @@ see the how-to [Restore a database from a backup](../how-to/restore-a-database-f
 Backup and in-place compaction are kept separate
 ([ADR-0010](../decisions/adr-0010-backup-and-compaction-are-separate.md)).
 
+### `ecdb compact PATH`
+
+Reclaims free space in `PATH/ec.db` by running SQLite's `VACUUM` **in place**,
+rewriting the file to release pages freed by deletions (EC prefers soft deletes, so
+freed space accrues) and to defragment. Reports the database version and the
+before/after size on standard error, e.g. `compacted games/example/ec.db (version
+1, 4136960 -> 32768 bytes, reclaimed 4104192)`; it writes nothing to standard
+output.
+
+- **Requires only an EC database — any version.** Unlike `backup`, `compact` does
+  not check the schema version: compaction changes layout, not schema, so it is
+  safe on a database that is behind or ahead of the binary. It fails only if the
+  file is missing or is not an EC database.
+- **Rewrites in place, transactionally.** `VACUUM` is crash-safe — a failure leaves
+  the original intact — but it needs roughly twice the database size in free disk
+  space while it runs, and exclusive access (stop the server first).
+- **Does not take a backup first.** `compact` and `backup` are orthogonal
+  ([ADR-0010](../decisions/adr-0010-backup-and-compaction-are-separate.md)). To keep
+  a safety net, back up before compacting:
+
+  ```
+  $ ecdb backup --version-stamp games/example
+  $ ecdb compact games/example
+  ```
+
 ### `ecdb migration up PATH`
 
 Applies any migrations the database is missing. Never creates a database. Running

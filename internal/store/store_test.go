@@ -136,6 +136,105 @@ func TestBackupSourceMissing(t *testing.T) {
 	}
 }
 
+// TestCompact fills a database, deletes the rows to leave free pages, and
+// confirms VACUUM shrinks the file while keeping it a current EC database.
+func TestCompact(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, DBName)
+	if err := Create(ctx, dbPath); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Add a table with enough data to span many pages, then delete it all so the
+	// pages are free but still allocated in the file.
+	conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite)
+	if err != nil {
+		t.Fatalf("OpenConn: %v", err)
+	}
+	if err := sqlitex.ExecuteTransient(conn, "CREATE TABLE bulk (x);", nil); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	for i := 0; i < 2000; i++ {
+		if err := sqlitex.ExecuteTransient(conn, "INSERT INTO bulk (x) VALUES (zeroblob(1024));", nil); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	if err := sqlitex.ExecuteTransient(conn, "DELETE FROM bulk;", nil); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	_ = conn.Close()
+
+	before := fileSize(t, dbPath)
+	if err := Compact(ctx, dbPath); err != nil {
+		t.Fatalf("Compact: %v", err)
+	}
+	after := fileSize(t, dbPath)
+
+	if after >= before {
+		t.Errorf("Compact did not shrink the file: before=%d after=%d", before, after)
+	}
+	// The database must remain a current EC database after compaction.
+	if err := Verify(ctx, dbPath); err != nil {
+		t.Errorf("Verify after Compact: %v", err)
+	}
+}
+
+func TestCompactNotFound(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), DBName)
+	if err := Compact(context.Background(), dbPath); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Compact error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestCompactNotEC(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), DBName)
+	conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite, sqlite.OpenCreate)
+	if err != nil {
+		t.Fatalf("OpenConn: %v", err)
+	}
+	if err := sqlitex.ExecuteTransient(conn, "CREATE TABLE t (x);", nil); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	_ = conn.Close()
+
+	if err := Compact(context.Background(), dbPath); !errors.Is(err, ErrNotEC) {
+		t.Errorf("Compact error = %v, want ErrNotEC", err)
+	}
+}
+
+// TestCompactAnyVersion confirms compaction does not require a current version:
+// an EC database ahead of the binary still compacts.
+func TestCompactAnyVersion(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), DBName)
+	if err := Create(ctx, dbPath); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	conn, err := sqlite.OpenConn(dbPath, sqlite.OpenReadWrite)
+	if err != nil {
+		t.Fatalf("OpenConn: %v", err)
+	}
+	if err := sqlitex.ExecuteTransient(conn, "PRAGMA user_version = 999;", nil); err != nil {
+		t.Fatalf("bump user_version: %v", err)
+	}
+	_ = conn.Close()
+
+	if err := Compact(ctx, dbPath); err != nil {
+		t.Errorf("Compact on version-ahead database: %v", err)
+	}
+}
+
+// fileSize is a test helper returning the size of a file.
+func fileSize(t *testing.T, path string) int64 {
+	t.Helper()
+	sb, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat %s: %v", path, err)
+	}
+	return sb.Size()
+}
+
 // TestMigrateUpApplies drives the apply path: an empty EC database at version 0
 // is brought current.
 func TestMigrateUpApplies(t *testing.T) {
