@@ -85,6 +85,12 @@ func (s *Server) Handler() http.Handler {
 	authed.handle(http.MethodPost, "/me/email", s.handleUpdateMyEmail)
 	authed.handle(http.MethodPost, "/me/secret", s.handleUpdateMySecret)
 
+	// The caller's own sessions (openapi.yaml: listMySessions, revokeMySession).
+	// Authenticated and scoped to the caller: listing marks the current session,
+	// and only the caller's own sessions are revocable (others are 404).
+	authed.handle(http.MethodGet, "/me/sessions", s.handleListMySessions)
+	authed.handle(http.MethodDelete, "/me/sessions/{sessionId}", s.handleRevokeMySession)
+
 	// The caller's own game memberships (openapi.yaml: listMyGames). Authenticated,
 	// scoped to the caller; a game-scoped read that stays off the account projection
 	// served by /me (ADR-0004).
@@ -96,6 +102,18 @@ func (s *Server) Handler() http.Handler {
 	admin.handle(http.MethodPost, "/accounts", s.handleCreateAccount)
 	admin.handle(http.MethodGet, "/accounts/{accountId}", s.handleGetAccount)
 	admin.handle(http.MethodPatch, "/accounts/{accountId}", s.handleUpdateAccount)
+
+	// Admin session management (openapi.yaml: listAccountSessions,
+	// revokeAccountSessions, revokeAccountSession). Gated by requireAdmin: list or
+	// force-logout a compromised or deactivated account's sessions, wholesale or one
+	// at a time.
+	admin.handle(http.MethodGet, "/accounts/{accountId}/sessions", s.handleListAccountSessions)
+	admin.handle(http.MethodDelete, "/accounts/{accountId}/sessions", s.handleRevokeAccountSessions)
+	admin.handle(http.MethodDelete, "/accounts/{accountId}/sessions/{sessionId}", s.handleRevokeAccountSession)
+
+	// Admin session maintenance (openapi.yaml: purgeSessions). Hard-deletes expired
+	// session records on demand; admin only.
+	admin.handle(http.MethodPost, "/admin/sessions/purge", s.handlePurgeSessions)
 
 	// Game catalog and lifecycle (openapi.yaml: listGames, createGame, getGame,
 	// updateGame). Listing and reading are authenticated (results filtered by
