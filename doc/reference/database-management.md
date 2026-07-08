@@ -79,6 +79,33 @@ Migrations are forward-only. To move a database backwards, recreate it
 alpha this is cheap because databases are disposable and rebuilt from data files;
 a reversible-migration mechanism is not worth its complexity at this stage.
 
+## Logging
+
+Every `ecdb` command accepts `--logging-level`, which sets the minimum level of
+the diagnostic log:
+
+| Value | Effect |
+| --- | --- |
+| `DEBUG` | everything, including per-command trace lines |
+| `INFO` | the default |
+| `WARN` | warnings and errors only |
+| `ERROR` | errors only |
+
+Names are case-insensitive. The level is also settable via `ECDB_LOGGING_LEVEL`
+(the same flag through the `ECDB_` env prefix); an explicit `--logging-level` flag
+wins over the environment. The default, `INFO`, matches `slog`'s own default. An
+unrecognized name is a usage error (`ecdb: unknown logging level "…"`, exit 1).
+
+`ERROR` is a floor: no value turns error logging off.
+
+The log is separate from a command's other output and is written to standard
+error, for the developer or agent. It does not affect results (which go to
+standard output — see [`migration version`](#ecdb-migration-version-path)) or the
+`ecdb: <message>` error reports the shell sees on failure. See
+[ADR-0009](../decisions/adr-0009-output-channels-stdout-stderr-slog.md) for the
+stdout / stderr / `slog` split. The same flag and env-prefix convention applies to
+the `ec` server (`EC_LOGGING_LEVEL`).
+
 ## Environments
 
 On every run, `ecdb` loads `.env` files selected by the `ECDB_ENV` variable

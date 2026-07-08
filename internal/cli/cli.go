@@ -42,9 +42,30 @@ func LoadEnv(prefix string) error {
 //   - ff.ErrNoExec (no command) -> print help, 2 (a usage error)
 //   - any other error           -> print "<name>: <err>", 1
 //
-// Returning the code rather than calling os.Exit keeps this testable.
-func Run(ctx context.Context, cmd *ff.Command, prefix string, args []string) int {
-	err := cmd.ParseAndRun(ctx, args, ff.WithEnvVarPrefix(prefix))
+// Parsing and running are split so that logging, if configured, is applied in
+// between — after the flags (and their env-var fallbacks) are known, but before
+// the selected command runs. Pass a nil logging to skip that step. Returning the
+// code rather than calling os.Exit keeps this testable.
+func Run(ctx context.Context, cmd *ff.Command, prefix string, args []string, logging *Logging) int {
+	if err := cmd.Parse(args, ff.WithEnvVarPrefix(prefix)); err != nil {
+		return exitCode(cmd, err)
+	}
+	if logging != nil {
+		if err := logging.Apply(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", cmd.Name, err)
+			return 1
+		}
+	}
+	if err := cmd.Run(ctx); err != nil {
+		return exitCode(cmd, err)
+	}
+	return 0
+}
+
+// exitCode renders err to stderr in the house style and returns the matching
+// process exit code. It is shared by Run's parse and run phases so both map
+// errors the same way.
+func exitCode(cmd *ff.Command, err error) int {
 	switch {
 	case err == nil:
 		return 0

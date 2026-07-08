@@ -21,12 +21,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ec: %v\n", err)
 		os.Exit(1)
 	}
-	os.Exit(cli.Run(context.Background(), newRootCommand(), "EC", os.Args[1:]))
+	cmd, logging := newRootCommand()
+	os.Exit(cli.Run(context.Background(), cmd, "EC", os.Args[1:], logging))
 }
 
-// newRootCommand builds the ec command tree.
-func newRootCommand() *ff.Command {
+// newRootCommand builds the ec command tree, returning it alongside the shared
+// logging setup so main can apply the resolved log level after parsing.
+func newRootCommand() (*ff.Command, *cli.Logging) {
 	rootFlags := ff.NewFlagSet("ec")
+	logging := cli.NewLogging(rootFlags)
 	rootCmd := &ff.Command{
 		Name:      "ec",
 		Usage:     "ec [FLAGS] SUBCOMMAND ...",
@@ -46,5 +49,5 @@ func newRootCommand() *ff.Command {
 		},
 	}
 	rootCmd.Subcommands = append(rootCmd.Subcommands, versionCmd)
-	return rootCmd
+	return rootCmd, logging
 }

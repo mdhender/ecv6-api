@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -22,13 +23,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ecdb: %v\n", err)
 		os.Exit(1)
 	}
-	os.Exit(cli.Run(context.Background(), newRootCommand(), "ECDB", os.Args[1:]))
+	cmd, logging := newRootCommand()
+	os.Exit(cli.Run(context.Background(), cmd, "ECDB", os.Args[1:], logging))
 }
 
-// newRootCommand builds the ecdb command tree. main stays a thin bootstrap so the
-// tree can grow here without turning main into a wall of setup.
-func newRootCommand() *ff.Command {
+// newRootCommand builds the ecdb command tree, returning it alongside the shared
+// logging setup so main can apply the resolved log level after parsing. main
+// stays a thin bootstrap so the tree can grow here without turning main into a
+// wall of setup.
+func newRootCommand() (*ff.Command, *cli.Logging) {
 	rootFlags := ff.NewFlagSet("ecdb")
+	logging := cli.NewLogging(rootFlags)
+	log := logging.Logger
 	rootCmd := &ff.Command{
 		Name:      "ecdb",
 		Usage:     "ecdb [FLAGS] SUBCOMMAND ...",
@@ -44,7 +50,7 @@ func newRootCommand() *ff.Command {
 		ShortHelp: "create a new database in folder PATH and apply migrations",
 		Flags:     createFlags,
 		Exec: func(ctx context.Context, args []string) error {
-			return cmdCreate(ctx, args, *overwrite)
+			return cmdCreate(ctx, log, args, *overwrite)
 		},
 	}
 
@@ -71,7 +77,9 @@ func newRootCommand() *ff.Command {
 		Usage:     "ecdb migration version PATH",
 		ShortHelp: "print the migration (schema) version of the database in folder PATH",
 		Flags:     migrationVersionFlags,
-		Exec:      cmdMigrationVersion,
+		Exec: func(ctx context.Context, args []string) error {
+			return cmdMigrationVersion(ctx, log, args)
+		},
 	}
 
 	migrationVerifyFlags := ff.NewFlagSet("verify").SetParent(migrationFlags)
@@ -80,7 +88,9 @@ func newRootCommand() *ff.Command {
 		Usage:     "ecdb migration verify PATH",
 		ShortHelp: "exit 0 if the database in folder PATH is current, else exit 1",
 		Flags:     migrationVerifyFlags,
-		Exec:      cmdVerify,
+		Exec: func(ctx context.Context, args []string) error {
+			return cmdVerify(ctx, log, args)
+		},
 	}
 
 	migrationUpFlags := ff.NewFlagSet("up").SetParent(migrationFlags)
@@ -89,7 +99,9 @@ func newRootCommand() *ff.Command {
 		Usage:     "ecdb migration up PATH",
 		ShortHelp: "apply any missing migrations to the database in folder PATH",
 		Flags:     migrationUpFlags,
-		Exec:      cmdMigrationUp,
+		Exec: func(ctx context.Context, args []string) error {
+			return cmdMigrationUp(ctx, log, args)
+		},
 	}
 
 	migrationCmd := &ff.Command{
@@ -101,7 +113,7 @@ func newRootCommand() *ff.Command {
 	}
 
 	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, versionCmd, migrationCmd)
-	return rootCmd
+	return rootCmd, logging
 }
 
 // requirePath returns the single PATH argument (the data folder that holds
@@ -116,11 +128,12 @@ func requirePath(cmd string, args []string) (string, error) {
 
 // cmdCreate creates a fresh ec.db in the folder given by args[0]. The folder must
 // already exist.
-func cmdCreate(ctx context.Context, args []string, overwrite bool) error {
+func cmdCreate(ctx context.Context, log *slog.Logger, args []string, overwrite bool) error {
 	folder, err := requirePath("create", args)
 	if err != nil {
 		return err
 	}
+	log.Debug("create: starting", "folder", folder, "overwrite", overwrite)
 	if sb, err := os.Stat(folder); err != nil {
 		return fmt.Errorf("create: cannot access PATH %s: %w", folder, err)
 	} else if !sb.IsDir() {
@@ -157,12 +170,13 @@ func cmdCreate(ctx context.Context, args []string, overwrite bool) error {
 
 // cmdMigrationUp applies any missing migrations to the database in folder
 // args[0].
-func cmdMigrationUp(ctx context.Context, args []string) error {
+func cmdMigrationUp(ctx context.Context, log *slog.Logger, args []string) error {
 	folder, err := requirePath("migration up", args)
 	if err != nil {
 		return err
 	}
 	dbPath := filepath.Join(folder, store.DBName)
+	log.Debug("migration up: starting", "path", dbPath)
 	if err := store.MigrateUp(ctx, dbPath); err != nil {
 		return fmt.Errorf("migration up: cannot apply migrations to %s: %w", dbPath, err)
 	}
@@ -172,12 +186,13 @@ func cmdMigrationUp(ctx context.Context, args []string) error {
 
 // cmdMigrationVersion prints the migration (schema) version of the database in
 // folder args[0] to stdout as a plain integer, so it can be captured in scripts.
-func cmdMigrationVersion(ctx context.Context, args []string) error {
+func cmdMigrationVersion(ctx context.Context, log *slog.Logger, args []string) error {
 	folder, err := requirePath("migration version", args)
 	if err != nil {
 		return err
 	}
 	dbPath := filepath.Join(folder, store.DBName)
+	log.Debug("migration version: starting", "path", dbPath)
 	v, err := store.Version(ctx, dbPath)
 	if err != nil {
 		return fmt.Errorf("migration version: cannot read database version of %s: %w", dbPath, err)
@@ -188,12 +203,13 @@ func cmdMigrationVersion(ctx context.Context, args []string) error {
 
 // cmdVerify returns nil only if the database in folder args[0] exists and is
 // current; otherwise it returns an error (which the caller maps to exit 1).
-func cmdVerify(ctx context.Context, args []string) error {
+func cmdVerify(ctx context.Context, log *slog.Logger, args []string) error {
 	folder, err := requirePath("verify", args)
 	if err != nil {
 		return err
 	}
 	dbPath := filepath.Join(folder, store.DBName)
+	log.Debug("verify: starting", "path", dbPath)
 	if err := store.Verify(ctx, dbPath); err != nil {
 		return fmt.Errorf("verify failed for %s: %w", dbPath, err)
 	}
