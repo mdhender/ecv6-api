@@ -45,7 +45,7 @@ func TestRunExitCodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// A fresh command per run: ff commands retain parse state.
-			if got := Run(context.Background(), newTestCmd(), "T", tt.args); got != tt.want {
+			if got := Run(context.Background(), newTestCmd(), "T", tt.args, nil); got != tt.want {
 				t.Errorf("Run(%v) = %d, want %d", tt.args, got, tt.want)
 			}
 		})
