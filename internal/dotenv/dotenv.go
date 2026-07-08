@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/mdhender/ecv6-api/cerrs"
+	"github.com/mdhender/ecv6-api/internal/cerrs"
 )
 
 const (

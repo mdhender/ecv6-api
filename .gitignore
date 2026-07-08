@@ -11,6 +11,7 @@
 *-prompt.md
 
 # Build files
+/dist/
 /ec
 /ecdb
 

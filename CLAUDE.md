@@ -278,15 +278,20 @@ compatibility surface, like a save-file format):
   SQLite data is precious.
 - **Data directories:** `data/claude/` is **yours** — destructive tests are fine
   there. The user works in `data/alpha/` and `data/ec01/`; leave those alone.
-- **Environment:** set `ECV6_ENV=claude` so you never clobber the user's
-  environments. A dotenv loader will be added later (you'll be told); env vars use
-  the `ECV6_` prefix.
+- **Environment:** set the binary's `*_ENV` variable to `claude` so you never
+  clobber the user's environments — `ECDB_ENV=claude` for `cmd/ecdb`, `EC_ENV=claude`
+  for `cmd/ec`. Each binary uses its **own** env-var prefix (see
+  [Commands & configuration](#commands--configuration)); the dotenv loader is wired
+  in.
 
 ## Commands & configuration
 
 CLI is built with **`github.com/peterbourgon/ff/v4`** (commands + subcommands).
-Environment variables use the **`ECV6_`** prefix, loaded by the dotenv package on
-startup once it lands.
+Each binary uses its **own** env-var prefix — `cmd/ecdb` → **`ECDB_`**, `cmd/ec` →
+**`EC_`** — bound to flags via `ff.WithEnvVarPrefix`. The selector for which
+`.env*` files load is that same prefix plus `_ENV` (`ECDB_ENV`, `EC_ENV`), read
+directly before flag parsing. Files are loaded by the `internal/dotenv` package on
+startup.
 
 Two binaries:
 
