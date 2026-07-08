@@ -57,13 +57,14 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 
 	backupFlags := ff.NewFlagSet("backup").SetParent(rootFlags)
 	outputPath := backupFlags.StringLong("output-path", "", "folder to write the backup into (default: the database's folder)")
+	versionStamp := backupFlags.BoolLong("version-stamp", "append the migration version to the backup file name")
 	backupCmd := &ff.Command{
 		Name:      "backup",
 		Usage:     "ecdb backup [FLAGS] PATH",
 		ShortHelp: "back up the database in folder PATH to a timestamped copy",
 		Flags:     backupFlags,
 		Exec: func(ctx context.Context, args []string) error {
-			return cmdBackup(ctx, log, args, *outputPath)
+			return cmdBackup(ctx, log, args, *outputPath, *versionStamp)
 		},
 	}
 
@@ -185,7 +186,7 @@ func cmdCreate(ctx context.Context, log *slog.Logger, args []string, overwrite b
 // timestamped file. The backup file is always named ec.db.<timestamp-utc>; the
 // caller chooses only the destination folder (--output-path, defaulting to the
 // database's own folder), never the file name. See ADR-0010.
-func cmdBackup(ctx context.Context, log *slog.Logger, args []string, outputPath string) error {
+func cmdBackup(ctx context.Context, log *slog.Logger, args []string, outputPath string, versionStamp bool) error {
 	folder, err := requirePath("backup", args)
 	if err != nil {
 		return err
@@ -209,7 +210,9 @@ func cmdBackup(ctx context.Context, log *slog.Logger, args []string, outputPath 
 		return fmt.Errorf("backup: --output-path is not a folder: %s", outputPath)
 	}
 
-	destPath := filepath.Join(outputPath, backupName(time.Now()))
+	// Verify passed, so the database version equals the binary's expected version;
+	// use that as the stamped migration version.
+	destPath := filepath.Join(outputPath, backupName(time.Now(), store.ExpectedVersion(), versionStamp))
 	log.Debug("backup: starting", "src", dbPath, "dest", destPath)
 
 	// Best-effort friendly pre-check; store.Backup's VACUUM INTO is the authority
@@ -229,12 +232,21 @@ func cmdBackup(ctx context.Context, log *slog.Logger, args []string, outputPath 
 	return nil
 }
 
-// backupName returns the fixed backup file name for the given time: ec.db.
-// followed by a filesystem-safe, lexicographically sortable UTC stamp
-// (ISO 8601 basic, e.g. ec.db.20260708T183245Z). The trailing Z is appended
-// literally rather than via a layout token to avoid timezone-formatting quirks.
-func backupName(t time.Time) string {
-	return store.DBName + "." + t.UTC().Format("20060102T150405") + "Z"
+// backupName returns the backup file name for the given time: ec.db. followed by
+// a filesystem-safe, lexicographically sortable UTC stamp (ISO 8601 basic, e.g.
+// ec.db.20260708T183245Z). The trailing Z is appended literally rather than via a
+// layout token to avoid timezone-formatting quirks.
+//
+// When versionStamp is true, the migration (schema) version is appended as
+// -<version> (e.g. ec.db.20260708T183245Z-1), so a backup states which schema it
+// holds — useful when matching a backup to a binary during a rollback. The caller
+// still never supplies the name; the flag only toggles this fixed suffix.
+func backupName(t time.Time, version int, versionStamp bool) string {
+	name := store.DBName + "." + t.UTC().Format("20060102T150405") + "Z"
+	if versionStamp {
+		name = fmt.Sprintf("%s-%d", name, version)
+	}
+	return name
 }
 
 // cmdMigrationUp applies any missing migrations to the database in folder
