@@ -38,7 +38,10 @@ func TestServeMemorySeedsAdminAndLogsIn(t *testing.T) {
 		t.Fatalf("seedMemoryAdmin: %v", err)
 	}
 
-	srv := server.New(server.Config{Addr: ":0", SecretCost: secret.MinCost}, db, nil, ecv6.Version().String())
+	srv, err := server.New(server.Config{Addr: ":0", SecretCost: secret.MinCost}, db, nil, ecv6.Version().String())
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
 
 	body, _ := json.Marshal(api.LoginRequest{
 		Email:  openapi_types.Email(MemoryAdminEmail),
@@ -69,6 +72,19 @@ func TestServeMemoryRejectsDataDir(t *testing.T) {
 	err := cmdServe(context.Background(), discardLogger(), "games/example", ":0", false, true, secret.MinCost)
 	if err == nil {
 		t.Fatal("cmdServe with both --memory and --data returned nil, want a usage error")
+	}
+}
+
+// TestServeRejectsOutOfRangeSecretCost confirms cmdServe fails fast on a
+// --secret-cost outside the valid bcrypt range [secret.MinCost, secret.MaxCost],
+// before opening any store. A cost bcrypt would reject must not reach server.New,
+// where it would otherwise blank the login-timing decoy hash.
+func TestServeRejectsOutOfRangeSecretCost(t *testing.T) {
+	for _, cost := range []int{secret.MinCost - 1, secret.MaxCost + 1} {
+		err := cmdServe(context.Background(), discardLogger(), "", ":0", false, true, cost)
+		if err == nil {
+			t.Errorf("cmdServe with --secret-cost %d returned nil, want an out-of-range error", cost)
+		}
 	}
 }
 
