@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,80 @@ func TestVersion(t *testing.T) {
 	}
 	if got.Application != "9.9.9-test" {
 		t.Errorf("application = %q, want 9.9.9-test", got.Application)
+	}
+	if want := int32(store.ExpectedVersion()); got.Database.SchemaVersion != want {
+		t.Errorf("schemaVersion = %d, want %d", got.Database.SchemaVersion, want)
+	}
+}
+
+// getVersion issues GET /api/version against srv and returns the recorder and the
+// decoded body.
+func getVersion(t *testing.T, srv *Server) (*httptest.ResponseRecorder, api.VersionResponse) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	srv.Handler().ServeHTTP(rec, req)
+	var got api.VersionResponse
+	if rec.Code == http.StatusOK {
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+	}
+	return rec, got
+}
+
+// TestVersionReadsSchemaAtMostOnce confirms /version reads the schema version from
+// the database exactly once and serves the cached value on later requests, so an
+// anonymous caller cannot make each request consume a connection-pool slot (issue
+// #45). The reader is counted via the readSchemaVersion seam.
+func TestVersionReadsSchemaAtMostOnce(t *testing.T) {
+	srv := newTestServer(t)
+	var reads int
+	real := srv.readSchemaVersion
+	srv.readSchemaVersion = func(ctx context.Context) (int, error) {
+		reads++
+		return real(ctx)
+	}
+
+	var want int32
+	for i := 0; i < 3; i++ {
+		rec, got := getVersion(t, srv)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("call %d: status = %d, want 200; body=%s", i, rec.Code, rec.Body.String())
+		}
+		if i == 0 {
+			want = got.Database.SchemaVersion
+		} else if got.Database.SchemaVersion != want {
+			t.Errorf("call %d: schemaVersion = %d, want %d", i, got.Database.SchemaVersion, want)
+		}
+	}
+	if reads != 1 {
+		t.Errorf("schema version read %d times, want exactly 1", reads)
+	}
+}
+
+// TestVersionDoesNotCacheFailure confirms a failed schema read is not cached: the
+// first (failing) call returns 500 and a later call retries the read and succeeds,
+// so a transient database error does not poison /version for the process lifetime.
+func TestVersionDoesNotCacheFailure(t *testing.T) {
+	srv := newTestServer(t)
+	real := srv.readSchemaVersion
+	fail := true
+	srv.readSchemaVersion = func(ctx context.Context) (int, error) {
+		if fail {
+			return 0, errors.New("transient db failure")
+		}
+		return real(ctx)
+	}
+
+	if rec, _ := getVersion(t, srv); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("first call status = %d, want 500; body=%s", rec.Code, rec.Body.String())
+	}
+
+	fail = false
+	rec, got := getVersion(t, srv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("retry status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	if want := int32(store.ExpectedVersion()); got.Database.SchemaVersion != want {
 		t.Errorf("schemaVersion = %d, want %d", got.Database.SchemaVersion, want)

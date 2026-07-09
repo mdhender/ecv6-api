@@ -38,10 +38,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleVersion serves GET /api/version (openapi.yaml: getVersion). It reports
 // the application version and the open database's schema version (SQLite
-// user_version). A failure to read the schema version is a 500 in the standard
-// envelope.
+// user_version). The schema version is immutable for the process lifetime, so it
+// is read from the database at most once and cached (schemaVersion), keeping this
+// public endpoint from hitting the database on every request (issue #45). A
+// failure to read the schema version is a 500 in the standard envelope.
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
-	schema, err := s.db.SchemaVersion(r.Context())
+	schema, err := s.schemaVersion(r.Context())
 	if err != nil {
 		logger(r).ErrorContext(r.Context(), "version: read schema version", "err", err)
 		writeError(w, r, http.StatusInternalServerError, codeInternal, "could not read database version")

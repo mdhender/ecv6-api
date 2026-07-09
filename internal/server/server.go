@@ -52,6 +52,19 @@ type Server struct {
 	// close so a duplicate trigger (e.g. two admin requests) is a safe no-op.
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
+
+	// readSchemaVersion reads the store's schema version. It is a field (defaulting
+	// to db.SchemaVersion) only so tests can substitute a counting or failing reader
+	// to exercise the caching in schemaVersion.
+	readSchemaVersion func(context.Context) (int, error)
+	// schemaVersionMu guards the schema-version cache below. The schema is immutable
+	// for the process lifetime — migrations complete at store open, before serving —
+	// so /version reads it from the database at most once and serves the cached value
+	// thereafter (issue #45). A read error is never cached: schemaVersion returns it
+	// and a later call retries, so a transient failure cannot poison /version.
+	schemaVersionMu     sync.Mutex
+	schemaVersionCached bool
+	schemaVersionValue  int
 }
 
 // New builds a Server. db is an already-open store (cmd/ec opens it; the server
@@ -80,14 +93,37 @@ func New(cfg Config, db *store.DB, logger *slog.Logger, version string) (*Server
 		return nil, fmt.Errorf("new server: decoy hash at cost %d: %w", cost, err)
 	}
 	return &Server{
-		cfg:             cfg,
-		db:              db,
-		log:             logger,
-		version:         version,
-		secretCost:      cost,
-		decoySecretHash: decoy,
-		shutdown:        make(chan struct{}),
+		cfg:               cfg,
+		db:                db,
+		log:               logger,
+		version:           version,
+		secretCost:        cost,
+		decoySecretHash:   decoy,
+		shutdown:          make(chan struct{}),
+		readSchemaVersion: db.SchemaVersion,
 	}, nil
+}
+
+// schemaVersion returns the store's schema version, reading it from the database
+// at most once for the process lifetime and caching the result. The schema is
+// immutable while the server runs — migrations complete at store open, before
+// serving — so /version need not hit the database on every request (issue #45).
+// The read runs under the cache mutex so concurrent first calls make a single
+// database round-trip. A read error is not cached: it is returned and a later
+// call retries, so a transient database failure does not poison /version.
+func (s *Server) schemaVersion(ctx context.Context) (int, error) {
+	s.schemaVersionMu.Lock()
+	defer s.schemaVersionMu.Unlock()
+	if s.schemaVersionCached {
+		return s.schemaVersionValue, nil
+	}
+	v, err := s.readSchemaVersion(ctx)
+	if err != nil {
+		return 0, err
+	}
+	s.schemaVersionValue = v
+	s.schemaVersionCached = true
+	return v, nil
 }
 
 // triggerShutdown requests a graceful shutdown, waking Run to drain in-flight
