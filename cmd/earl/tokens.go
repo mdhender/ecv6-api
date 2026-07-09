@@ -28,9 +28,12 @@ type identity struct {
 type tokenStore map[string]map[string]identity
 
 // tokensPath returns the path to tokens.json: EARL_TOKENS if set (an explicit
-// override, also handy for tests), else $XDG_CONFIG_HOME/earl/tokens.json, else
-// ~/.config/earl/tokens.json. It deliberately does not use os.UserConfigDir,
-// which resolves to ~/Library/Application Support on macOS.
+// full-path override, also handy for tests), else the env-scoped default
+// $XDG_CONFIG_HOME/earl/<env>/tokens.json, else ~/.config/earl/<env>/tokens.json.
+// The <env> segment (from earlEnv) segregates state by EARL_ENV so, e.g., a
+// claude run and a development run never share a token file. It deliberately does
+// not use os.UserConfigDir, which resolves to ~/Library/Application Support on
+// macOS.
 func tokensPath() (string, error) {
 	if p := os.Getenv("EARL_TOKENS"); p != "" {
 		return p, nil
@@ -43,7 +46,18 @@ func tokensPath() (string, error) {
 		}
 		dir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dir, "earl", "tokens.json"), nil
+	return filepath.Join(dir, "earl", earlEnv(), "tokens.json"), nil
+}
+
+// earlEnv reports the runtime environment that scopes earl's state, read from
+// EARL_ENV and defaulting to "development" when unset — mirroring cli.LoadEnv.
+// main aborts at startup for any value outside the accepted set (via cli.LoadEnv
+// -> dotenv.Load), so callers can treat the result as a valid, safe path segment.
+func earlEnv() string {
+	if env := os.Getenv("EARL_ENV"); env != "" {
+		return env
+	}
+	return "development"
 }
 
 // loadTokens reads the token store from path. A missing file is not an error —
