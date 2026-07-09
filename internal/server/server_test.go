@@ -189,3 +189,32 @@ func TestRecovery(t *testing.T) {
 		t.Errorf("code = %q, want %q", got.Error.Code, codeInternal)
 	}
 }
+
+// TestRecoveryPassesThroughErrAbortHandler confirms withRecovery re-panics the
+// http.ErrAbortHandler sentinel — net/http uses it to abort a connection
+// silently — rather than converting it into a logged 500 envelope.
+func TestRecoveryPassesThroughErrAbortHandler(t *testing.T) {
+	abortHandler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic(http.ErrAbortHandler)
+	})
+	h := chain(abortHandler, withRequestID, withLogging(discardLogger()), withRecovery)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/abort", nil)
+
+	defer func() {
+		v := recover()
+		if v == nil {
+			t.Fatalf("ErrAbortHandler was swallowed; want it to propagate")
+		}
+		if v != http.ErrAbortHandler {
+			t.Fatalf("recovered %v, want http.ErrAbortHandler", v)
+		}
+		// The sentinel must not be turned into a 500 envelope.
+		if rec.Code == http.StatusInternalServerError {
+			t.Errorf("status = 500, want the connection aborted without an envelope")
+		}
+	}()
+	h.ServeHTTP(rec, req)
+	t.Fatal("ServeHTTP returned without propagating the panic")
+}
