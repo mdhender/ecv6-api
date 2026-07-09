@@ -14,6 +14,7 @@
 /dist/
 /ec
 /ecdb
+/earl
 
 # Environment files (see internal/dotenv). The *.local files may hold secrets, so
 # they are explicity ignored; shared .env and .env.<env> files are committed.
