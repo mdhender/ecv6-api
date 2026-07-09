@@ -93,12 +93,17 @@ func withLogging(base *slog.Logger) Middleware {
 // withRecovery converts a panic in a downstream handler into a logged 500 with
 // the standard error envelope, so one bad handler cannot take the server down. If
 // the response was already partly written the envelope cannot be sent; the panic
-// is still logged.
+// is still logged. http.ErrAbortHandler is passed straight through — net/http
+// documents it as a sentinel handlers panic with to abort a connection silently,
+// so we neither log it nor try to write an envelope onto the aborted connection.
 func withRecovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sw, _ := w.(*statusRecorder)
 		defer func() {
 			if v := recover(); v != nil {
+				if v == http.ErrAbortHandler {
+					panic(v) // sentinel: let net/http abort the connection
+				}
 				logger(r).ErrorContext(r.Context(), "handler panic", "panic", v, "path", r.URL.Path)
 				if sw != nil && sw.wrote {
 					return // headers already sent; can't send an envelope
