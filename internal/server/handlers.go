@@ -57,19 +57,21 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 // handleLogin serves POST /api/auth/login (openapi.yaml: login). It verifies an
 // email + secret against the stored hash and, on success, mints an opaque
-// server-side session, returning the raw token once (ADR-0002). Every failure
-// mode — malformed body, unknown email, wrong secret, inactive account — returns
-// the same 401 so the response never reveals which accounts exist.
+// server-side session, returning the raw token once (ADR-0002). Every credential
+// failure — unknown email, wrong or empty secret, inactive account — returns the
+// same opaque 401 so the response never reveals which accounts exist; an empty
+// secret runs the same bcrypt work as a wrong one, so it is neither response- nor
+// timing-distinguishable from a denial. Only a request the server cannot even read
+// as a login — a malformed JSON body, or an email field that is empty or otherwise
+// not a valid address — is rejected as a 400 before any credential check; that is a
+// pure input-format error and, being identical regardless of account state, still
+// reveals nothing about which accounts exist.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req api.LoginRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 	email := string(req.Email)
-	if email == "" || req.Secret == "" {
-		writeError(w, r, http.StatusBadRequest, codeBadRequest, "email and secret are required")
-		return
-	}
 
 	account, err := s.db.GetAccountByEmail(r.Context(), email)
 	if err != nil {

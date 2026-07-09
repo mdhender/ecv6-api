@@ -131,6 +131,9 @@ func TestLoginRejectsBadCredentials(t *testing.T) {
 		{"wrong secret", "bob@example.com", "wrong-secret"},
 		{"unknown email", "nobody@example.com", "right-secret"},
 		{"inactive account", "gone@example.com", "right-secret"},
+		// A blank secret is just a wrong secret: it must deny with the same
+		// opaque 401 as the cases above, never a distinguishable 400 (issue #43).
+		{"empty secret", "bob@example.com", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -156,6 +159,27 @@ func TestLoginBadBody(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestLoginEmptyEmail: an empty (or otherwise malformed) email field cannot be
+// read as a valid address, so the request is rejected as a 400 bad_request before
+// any credential check. That is a pure input-format error — identical regardless
+// of account state — not the account-state-revealing 400 that issue #43 removed.
+func TestLoginEmptyEmail(t *testing.T) {
+	s := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader([]byte(`{"email":"","secret":"right-secret"}`)))
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	var got api.Error
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Error.Code != codeBadRequest {
+		t.Errorf("code = %q, want %q", got.Error.Code, codeBadRequest)
 	}
 }
 
