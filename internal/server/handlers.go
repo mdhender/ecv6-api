@@ -128,9 +128,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // every active session for the account. Revocation is immediate (ADR-0002).
 // Success is 204 No Content.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// The body is optional; default to revoking just the current session.
+	// The body is optional; default to revoking just the current session. An
+	// absent or empty body (including an unknown-length chunked request) is fine;
+	// only genuinely malformed JSON is a 400.
 	var req api.LogoutRequest
-	if r.ContentLength != 0 && !decodeJSON(w, r, &req) {
+	if !decodeOptionalJSON(w, r, &req) {
 		return
 	}
 	session, ok := sessionFromContext(r.Context())

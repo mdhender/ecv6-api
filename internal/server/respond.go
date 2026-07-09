@@ -4,6 +4,8 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -60,11 +62,33 @@ const maxRequestBody = 1 << 20
 
 // decodeJSON reads the request body into v as JSON. On success it returns true;
 // on a malformed or oversized body it writes the standard 400 envelope and
-// returns false, so callers can `if !decodeJSON(...) { return }`.
+// returns false, so callers can `if !decodeJSON(...) { return }`. A missing body
+// is malformed here; endpoints whose body is optional use decodeOptionalJSON.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeJSONBody(w, r, v, false)
+}
+
+// decodeOptionalJSON is like decodeJSON but treats an absent or empty body as
+// success, leaving v unchanged. It exists for endpoints whose body is optional
+// (e.g. logout, whose body may set allSessions but defaults to the current
+// session). Crucially it does not rely on r.ContentLength, which is -1 for an
+// unknown-length (chunked) request even when no bytes follow: an empty body
+// decodes to io.EOF, which we accept, while a genuinely malformed body still
+// writes the standard 400 envelope and returns false. The 1 MiB cap applies.
+func decodeOptionalJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeJSONBody(w, r, v, true)
+}
+
+// decodeJSONBody is the shared core of decodeJSON and decodeOptionalJSON. When
+// optional is true an empty body (io.EOF from the first decode) is reported as
+// success rather than a 400.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any, optional bool) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(v); err != nil {
+		if optional && errors.Is(err, io.EOF) {
+			return true
+		}
 		writeError(w, r, http.StatusBadRequest, codeBadRequest, "request body is not valid JSON")
 		return false
 	}
