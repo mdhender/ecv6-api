@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,6 +220,104 @@ func TestLogoutAllSessions(t *testing.T) {
 		if code := doLogout(t, s, tok, false); code != http.StatusUnauthorized {
 			t.Errorf("token %d still valid after logout-all: status %d, want 401", i, code)
 		}
+	}
+}
+
+// loginToken seeds an active account (if email is new to the server it must be
+// seeded by the caller) and returns a fresh bearer token for it.
+func loginToken(t *testing.T, s *Server, email, secret string) string {
+	t.Helper()
+	rec := doLogin(t, s, email, secret)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var sess api.AuthSession
+	if err := json.Unmarshal(rec.Body.Bytes(), &sess); err != nil {
+		t.Fatalf("decode AuthSession: %v", err)
+	}
+	return sess.Token
+}
+
+// postLogout posts to the logout route with the given bearer token and raw
+// request body, returning the status code. Passing the body as an io.Reader that
+// is not one of httptest's length-sniffed types (*bytes.Reader and friends)
+// yields an unknown-length request (ContentLength -1), as an HTTP/1.1 chunked
+// body does.
+func postLogout(t *testing.T, s *Server, token string, body io.Reader) int {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	s.Handler().ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func TestLogoutNoBody(t *testing.T) {
+	s := newTestServer(t)
+	seedAccount(t, s, "erin@example.com", "no-body-secret", false, true)
+	tok := loginToken(t, s, "erin@example.com", "no-body-secret")
+
+	// A nil body (no Content-Length, no bytes) revokes just the current session.
+	if code := postLogout(t, s, tok, nil); code != http.StatusNoContent {
+		t.Fatalf("logout (no body) status = %d, want 204", code)
+	}
+	// The session is gone: the token no longer authenticates.
+	if code := postLogout(t, s, tok, nil); code != http.StatusUnauthorized {
+		t.Fatalf("post-logout status = %d, want 401", code)
+	}
+}
+
+// TestLogoutEmptyChunkedBody is the regression test for issue #42: an
+// unknown-length (chunked) request carries ContentLength -1 even when its body
+// is empty, so logout must not treat that as a malformed body. io.NopCloser
+// hides the *strings.Reader from httptest's length sniffing, forcing -1.
+func TestLogoutEmptyChunkedBody(t *testing.T) {
+	s := newTestServer(t)
+	seedAccount(t, s, "frank@example.com", "chunked-secret", false, true)
+	tok := loginToken(t, s, "frank@example.com", "chunked-secret")
+
+	body := io.NopCloser(strings.NewReader(""))
+	if code := postLogout(t, s, tok, body); code != http.StatusNoContent {
+		t.Fatalf("logout (empty chunked body) status = %d, want 204", code)
+	}
+	if code := postLogout(t, s, tok, nil); code != http.StatusUnauthorized {
+		t.Fatalf("post-logout status = %d, want 401", code)
+	}
+}
+
+func TestLogoutValidBodyRevokesAll(t *testing.T) {
+	s := newTestServer(t)
+	seedAccount(t, s, "grace@example.com", "all-sessions-secret", false, true)
+
+	var tokens []string
+	for range 3 {
+		tokens = append(tokens, loginToken(t, s, "grace@example.com", "all-sessions-secret"))
+	}
+
+	// A valid {"allSessions": true} body still revokes every session.
+	allSessions := true
+	raw, _ := json.Marshal(api.LogoutRequest{AllSessions: &allSessions})
+	if code := postLogout(t, s, tokens[0], bytes.NewReader(raw)); code != http.StatusNoContent {
+		t.Fatalf("logout-all status = %d, want 204", code)
+	}
+	for i, tok := range tokens {
+		if code := postLogout(t, s, tok, nil); code != http.StatusUnauthorized {
+			t.Errorf("token %d still valid after logout-all: status %d, want 401", i, code)
+		}
+	}
+}
+
+func TestLogoutMalformedBody(t *testing.T) {
+	s := newTestServer(t)
+	seedAccount(t, s, "heidi@example.com", "bad-body-secret", false, true)
+	tok := loginToken(t, s, "heidi@example.com", "bad-body-secret")
+
+	// A non-empty but malformed body is still a 400, and the session survives.
+	if code := postLogout(t, s, tok, bytes.NewReader([]byte("not json"))); code != http.StatusBadRequest {
+		t.Fatalf("logout (malformed body) status = %d, want 400", code)
+	}
+	if code := postLogout(t, s, tok, nil); code != http.StatusNoContent {
+		t.Fatalf("logout after rejected malformed body status = %d, want 204", code)
 	}
 }
 
