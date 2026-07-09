@@ -14,13 +14,17 @@
 // credentials for a bearer token and saves it, logout revokes and forgets it,
 // and whoami is sugar for `get /me`.
 //
-// Tokens are saved in ~/.config/earl/tokens.json, keyed by server base URL and
-// account email, so earl can hold several identities (e.g. an admin and an
-// impersonated user) at once; --email / EARL_EMAIL selects between them.
+// Tokens are saved in ~/.config/earl/<env>/tokens.json, keyed by server base URL
+// and account email, so earl can hold several identities (e.g. an admin and an
+// impersonated user) at once; --email / EARL_EMAIL selects between them. The
+// <env> segment is EARL_ENV (default "development"), so runs against different
+// environments — e.g. claude and development — never share a token file;
+// EARL_TOKENS overrides the path entirely.
 //
 // Configuration follows the same ff + EARL_ env-prefix convention as ec and
 // ecdb: --base-url (EARL_BASE_URL), --email (EARL_EMAIL), --secret (EARL_SECRET),
-// and EARL_ENV selecting the .env files loaded at startup.
+// and EARL_ENV selecting both the .env files loaded at startup and the token
+// file's environment segment.
 package main
 
 import (

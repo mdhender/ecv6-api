@@ -37,6 +37,41 @@ func TestTokenStoreResolve(t *testing.T) {
 	}
 }
 
+func TestTokensPath(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+
+	// EARL_TOKENS is a full-path override that wins over everything else.
+	t.Setenv("EARL_TOKENS", "/explicit/tokens.json")
+	t.Setenv("EARL_ENV", "claude")
+	if got, err := tokensPath(); err != nil || got != "/explicit/tokens.json" {
+		t.Fatalf("tokensPath(override) = (%q,%v), want (/explicit/tokens.json, nil)", got, err)
+	}
+	t.Setenv("EARL_TOKENS", "")
+
+	// The env segment follows EARL_ENV, isolating each environment's tokens.
+	claude := filepath.Join(cfg, "earl", "claude", "tokens.json")
+	t.Setenv("EARL_ENV", "claude")
+	if got, err := tokensPath(); err != nil || got != claude {
+		t.Fatalf("tokensPath(claude) = (%q,%v), want (%q, nil)", got, err, claude)
+	}
+
+	dev := filepath.Join(cfg, "earl", "development", "tokens.json")
+	t.Setenv("EARL_ENV", "development")
+	if got, err := tokensPath(); err != nil || got != dev {
+		t.Fatalf("tokensPath(development) = (%q,%v), want (%q, nil)", got, err, dev)
+	}
+	if claude == dev {
+		t.Fatalf("claude and development share a token path %q", claude)
+	}
+
+	// Unset EARL_ENV resolves to development.
+	t.Setenv("EARL_ENV", "")
+	if got, err := tokensPath(); err != nil || got != dev {
+		t.Fatalf("tokensPath(unset) = (%q,%v), want (%q, nil)", got, err, dev)
+	}
+}
+
 func TestTokenStoreDrop(t *testing.T) {
 	base := "http://localhost:8080/api"
 	store := tokenStore{}

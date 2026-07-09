@@ -139,8 +139,24 @@ $ earl --email tester@example.com logout
 
 ## Where tokens live
 
-earl stores tokens in `~/.config/earl/tokens.json` (honoring `XDG_CONFIG_HOME`;
-override with `EARL_TOKENS`), mode `0600`, keyed by base URL and account email.
-Because tokens are keyed by email, earl holds several identities for one server at
-once — an admin and one or more impersonated users — and `--email` chooses between
-them. When only one identity is saved for a server, it is used by default.
+earl stores tokens in `~/.config/earl/<env>/tokens.json` (honoring
+`XDG_CONFIG_HOME`; override with `EARL_TOKENS`), mode `0600`, keyed by base URL and
+account email. Because tokens are keyed by email, earl holds several identities for
+one server at once — an admin and one or more impersonated users — and `--email`
+chooses between them. When only one identity is saved for a server, it is used by
+default.
+
+The `<env>` segment is `EARL_ENV` (default `development`), the same selector that
+picks which `.env` files load. So `EARL_ENV=claude` reads and writes
+`~/.config/earl/claude/tokens.json` while `development` uses
+`~/.config/earl/development/tokens.json`, and the two never see each other's
+tokens — isolation now follows the environment explicitly rather than relying on
+the servers happening to listen on different base URLs. This adds a third level of
+isolation on top of the existing base-URL and account-email keying inside each
+file (env → server → account). `EARL_TOKENS`, when set, is a full-path override
+that wins over the env-scoped default.
+
+Earlier earl versions kept a single `~/.config/earl/tokens.json`. That file is now
+ignored; earl starts fresh per environment. If you want to keep an existing login,
+move it into the matching env directory (e.g.
+`~/.config/earl/development/tokens.json`) — otherwise just log in again.
