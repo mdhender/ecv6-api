@@ -183,6 +183,45 @@ func TestLoginEmptyEmail(t *testing.T) {
 	}
 }
 
+// TestLoginShortCircuitsMissingCredentials covers the missing/empty-credential
+// short-circuit (commit 579dbd3): a body that omits the email or secret field —
+// or supplies an empty secret — is denied with the opaque 401 before any account
+// lookup or bcrypt work, never a distinguishable code. (A present-but-empty email
+// string is a 400 at decode instead; see TestLoginEmptyEmail.) The email of a
+// seeded, active account is used for the omitted-secret case to show the deny does
+// not depend on the account being unknown — the credential is simply missing.
+func TestLoginShortCircuitsMissingCredentials(t *testing.T) {
+	s := newTestServer(t)
+	seedAccount(t, s, "bob@example.com", "right-secret", false, true)
+
+	cases := []struct {
+		name, body string
+	}{
+		{"email field omitted", `{"secret":"right-secret"}`},
+		{"secret field omitted", `{"email":"bob@example.com"}`},
+		{"secret present but empty", `{"email":"bob@example.com","secret":""}`},
+		{"empty object", `{}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(tc.body))
+			s.Handler().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401; body=%s", rec.Code, rec.Body.String())
+			}
+			var got api.Error
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if got.Error.Code != codeUnauthorized {
+				t.Errorf("code = %q, want %q", got.Error.Code, codeUnauthorized)
+			}
+		})
+	}
+}
+
 func TestRequireAuthRejects(t *testing.T) {
 	s := newTestServer(t)
 
