@@ -52,13 +52,43 @@ func newRequestID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// maxRequestIDLen caps the length of an inbound X-Request-Id we are willing to
+// reuse. Anything longer is ignored and a fresh id is minted instead, so a client
+// cannot bloat log lines or the response header with an unbounded value.
+const maxRequestIDLen = 64
+
+// validRequestID reports whether id is safe to reuse as a correlation id: it must
+// be non-empty, at most maxRequestIDLen characters, and composed only of ASCII
+// alphanumerics plus '-' and '_'. Restricting the charset keeps control
+// characters, whitespace, and CR/LF out of log lines and the reflected response
+// header, blocking log-line spoofing and header-injection via a client-supplied
+// X-Request-Id.
+func validRequestID(id string) bool {
+	if id == "" || len(id) > maxRequestIDLen {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '-' || c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // withRequestID assigns each request a correlation id — reusing an inbound
-// X-Request-Id when the client supplied one, otherwise minting a fresh one — and
-// echoes it back in the response header so the client can quote it.
+// X-Request-Id when the client supplied an acceptable one (see validRequestID),
+// otherwise minting a fresh one — and echoes it back in the response header so the
+// client can quote it.
 func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get(requestIDHeader)
-		if id == "" {
+		if !validRequestID(id) {
 			id = newRequestID()
 		}
 		w.Header().Set(requestIDHeader, id)

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mdhender/ecv6-api/internal/api"
@@ -163,6 +164,58 @@ func TestInboundRequestIDPreserved(t *testing.T) {
 
 	if got := rec.Header().Get(requestIDHeader); got != "client-supplied-id" {
 		t.Errorf("request id = %q, want client-supplied-id", got)
+	}
+}
+
+// TestInboundRequestIDRejected confirms an unacceptable inbound X-Request-Id —
+// over-length or carrying a disallowed character (whitespace, CR/LF, angle
+// brackets, control bytes) — is ignored and replaced by a freshly minted id, so a
+// client cannot bloat log lines or inject bytes into the reflected header.
+func TestInboundRequestIDRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+	}{
+		{"over length", strings.Repeat("a", maxRequestIDLen+1)},
+		{"newline", "abc\ndef"},
+		{"carriage return", "abc\rdef"},
+		{"space", "abc def"},
+		{"angle bracket", "<script>"},
+		{"control byte", "abc\x00def"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestServer(t)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/healthz", nil)
+			req.Header.Set(requestIDHeader, tt.id)
+			srv.Handler().ServeHTTP(rec, req)
+
+			got := rec.Header().Get(requestIDHeader)
+			if got == tt.id {
+				t.Fatalf("request id = %q, want a freshly minted id", got)
+			}
+			if !validRequestID(got) {
+				t.Errorf("minted request id = %q is not a valid id", got)
+			}
+		})
+	}
+}
+
+// TestRequestIDMintedWhenAbsent confirms a request with no inbound X-Request-Id
+// gets a freshly minted, valid id echoed back in the response header.
+func TestRequestIDMintedWhenAbsent(t *testing.T) {
+	srv := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/healthz", nil)
+	srv.Handler().ServeHTTP(rec, req)
+
+	got := rec.Header().Get(requestIDHeader)
+	if got == "" {
+		t.Fatalf("missing %s response header", requestIDHeader)
+	}
+	if !validRequestID(got) {
+		t.Errorf("minted request id = %q is not a valid id", got)
 	}
 }
 
