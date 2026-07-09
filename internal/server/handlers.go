@@ -70,23 +70,33 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 // handleLogin serves POST /api/auth/login (openapi.yaml: login). It verifies an
 // email + secret against the stored hash and, on success, mints an opaque
 // server-side session, returning the raw token once (ADR-0002). Every credential
-// failure — unknown email, wrong or empty secret, inactive account — returns the
-// same opaque 401 so the response never reveals which accounts exist; an empty
-// secret runs the same bcrypt work as a wrong one, so it is neither response- nor
-// timing-distinguishable from a denial. Only a request the server cannot even read
-// as a login — a malformed JSON body, or an email field that is empty or otherwise
-// not a valid address — is rejected as a 400 before any credential check; that is a
-// pure input-format error and, being identical regardless of account state, still
-// reveals nothing about which accounts exist.
+// failure returns the same opaque 401 so the response never reveals which accounts
+// exist. There are two failure paths, both yielding that identical 401:
+//
+//   - A present-but-wrong credential — unknown email, wrong secret, inactive
+//     account — is denied only after doing equivalent bcrypt work (the decoy hash
+//     for an unknown email), so timing cannot distinguish the cases or enumerate
+//     accounts.
+//   - A missing or empty credential — the email field absent, or the secret absent
+//     or empty — is short-circuited to the same 401 before any account lookup or
+//     bcrypt work. This is a cheap DoS guard, and it is safe: a missing/empty
+//     credential is caller-supplied, so the fast 401 is identical for every email
+//     regardless of whether an account exists, and reveals nothing.
+//
+// A request the server cannot even read as a login — a malformed JSON body, or a
+// present email field that is empty or otherwise not a valid address (rejected by
+// the Email type at decode) — is a 400 before the handler runs; that is a pure
+// input-format error, identical regardless of account state.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req api.LoginRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	// A missing email or secret (an absent field leaves the zero value; a present
+	// email that is empty or malformed was already a 400 at decode) is denied here,
+	// before any lookup or bcrypt work — a DoS guard, not an enumeration vector.
 	email := string(req.Email)
 	if email == "" || req.Secret == "" {
-		// this is not an attack that can enumerate an email or secret, but it could be a DOS.
-		// short circuit the request.
 		writeError(w, r, http.StatusUnauthorized, codeUnauthorized, "invalid email or secret")
 		return
 	}
