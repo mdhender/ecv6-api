@@ -49,7 +49,10 @@ func newTestAPI(t *testing.T) string {
 		t.Fatalf("seed admin: %v", err)
 	}
 
-	srv := server.New(server.Config{SecretCost: secret.MinCost}, db, nil, "test")
+	srv, err := server.New(server.Config{SecretCost: secret.MinCost}, db, nil, "test")
+	if err != nil {
+		t.Fatalf("server.New: %v", err)
+	}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts.URL + server.BasePath

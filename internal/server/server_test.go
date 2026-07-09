@@ -31,19 +31,40 @@ func newTestServer(t *testing.T) *Server {
 	t.Cleanup(func() { _ = db.Close() })
 	// MinCost keeps bcrypt hashing fast across the suite; production defaults to
 	// secret.DefaultCost via New.
-	return New(Config{Addr: ":0", SecretCost: secret.MinCost}, db, nil, "9.9.9-test")
+	s, err := New(Config{Addr: ":0", SecretCost: secret.MinCost}, db, nil, "9.9.9-test")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return s
 }
 
 // TestNewDefaultsSecretCost confirms a zero SecretCost resolves to the secure
 // production default, and that the decoy hash is computed at that same cost so
 // unknown-account login timing matches a real check.
 func TestNewDefaultsSecretCost(t *testing.T) {
-	s := New(Config{Addr: ":0"}, nil, nil, "test")
+	s, err := New(Config{Addr: ":0"}, nil, nil, "test")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	if s.secretCost != secret.DefaultCost {
 		t.Errorf("secretCost = %d, want DefaultCost %d", s.secretCost, secret.DefaultCost)
 	}
 	if !secret.Verify(s.decoySecretHash, loginDecoySecret) {
 		t.Errorf("decoy hash was not computed for the resolved cost")
+	}
+}
+
+// TestNewRejectsUnhashableCost confirms New surfaces the bcrypt error rather than
+// building a Server with an empty decoy hash when the secret cost is above
+// secret.MaxCost — the failure that would otherwise silently reopen the
+// login-timing side channel.
+func TestNewRejectsUnhashableCost(t *testing.T) {
+	s, err := New(Config{Addr: ":0", SecretCost: secret.MaxCost + 1}, nil, nil, "test")
+	if err == nil {
+		t.Fatal("New with cost above MaxCost returned nil error, want a hash failure")
+	}
+	if s != nil {
+		t.Errorf("New returned a non-nil Server on error: %+v", s)
 	}
 }
 

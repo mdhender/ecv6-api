@@ -42,6 +42,14 @@ const (
 // it never creates one, so a missing ec.db is a fatal error, not a prompt to
 // create it — that is ecdb's job — and an on-disk store is never auto-seeded.
 func cmdServe(ctx context.Context, log *slog.Logger, dataDir, listen string, dev, memory bool, secretCost int) error {
+	// Validate the bcrypt cost before opening anything. An out-of-range cost is a
+	// hard misconfiguration: too high and bcrypt rejects it, which would leave the
+	// server's login-timing decoy hash empty and reopen the account-enumeration
+	// side channel (server.New now refuses that), and also break account creation
+	// and memory-seeding. Fail fast with a clear message rather than degrade.
+	if secretCost < secret.MinCost || secretCost > secret.MaxCost {
+		return fmt.Errorf("serve: --secret-cost %d is out of range (must be between %d and %d, inclusive)", secretCost, secret.MinCost, secret.MaxCost)
+	}
 	if memory && dataDir != "" {
 		return fmt.Errorf("serve: --memory and --data are mutually exclusive (unset one)")
 	}
@@ -77,11 +85,14 @@ func cmdServe(ctx context.Context, log *slog.Logger, dataDir, listen string, dev
 	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv := server.New(server.Config{
+	srv, err := server.New(server.Config{
 		Addr:       listen,
 		DevMode:    dev,
 		SecretCost: secretCost,
 	}, db, log, ecv6.Version().String())
+	if err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
 
 	if err := srv.Run(runCtx); err != nil {
 		return fmt.Errorf("serve: %w", err)

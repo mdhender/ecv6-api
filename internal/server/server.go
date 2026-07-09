@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -56,19 +57,28 @@ type Server struct {
 // New builds a Server. db is an already-open store (cmd/ec opens it; the server
 // never creates one). version is the application version string reported by
 // GET /version. logger may be nil, in which case slog's default is used.
-func New(cfg Config, db *store.DB, logger *slog.Logger, version string) *Server {
+//
+// New returns an error if the decoy hash cannot be computed at the resolved
+// secret cost — bcrypt rejects a cost above secret.MaxCost. Callers validate the
+// cost up front (cmd/ec does so at startup), but New refuses to build a Server
+// with an empty decoy rather than silently degrading the login timing defense: a
+// blank decoy verifies with no bcrypt work, reintroducing the account-enumeration
+// side channel it exists to close (see handleLogin).
+func New(cfg Config, db *store.DB, logger *slog.Logger, version string) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	// A zero cost means "unset": use the secure production default. The decoy hash
 	// is computed once here at the same cost, so an unknown-account login does the
-	// same bcrypt work as a real one (equal timing). An error leaves the decoy
-	// empty, which still fails to verify — it only weakens the timing guarantee.
+	// same bcrypt work as a real one (equal timing).
 	cost := cfg.SecretCost
 	if cost == 0 {
 		cost = secret.DefaultCost
 	}
-	decoy, _ := secret.Hash(loginDecoySecret, cost)
+	decoy, err := secret.Hash(loginDecoySecret, cost)
+	if err != nil {
+		return nil, fmt.Errorf("new server: decoy hash at cost %d: %w", cost, err)
+	}
 	return &Server{
 		cfg:             cfg,
 		db:              db,
@@ -77,7 +87,7 @@ func New(cfg Config, db *store.DB, logger *slog.Logger, version string) *Server 
 		secretCost:      cost,
 		decoySecretHash: decoy,
 		shutdown:        make(chan struct{}),
-	}
+	}, nil
 }
 
 // triggerShutdown requests a graceful shutdown, waking Run to drain in-flight

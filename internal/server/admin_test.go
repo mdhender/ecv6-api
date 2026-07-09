@@ -25,7 +25,11 @@ func newTestServerDev(t *testing.T) *Server {
 		t.Fatalf("OpenTemporary: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return New(Config{Addr: ":0", DevMode: true, SecretCost: secret.MinCost}, db, nil, "9.9.9-test")
+	s, err := New(Config{Addr: ":0", DevMode: true, SecretCost: secret.MinCost}, db, nil, "9.9.9-test")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return s
 }
 
 // closed reports whether the shutdown channel has been closed (i.e. a drain was
