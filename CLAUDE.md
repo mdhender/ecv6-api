@@ -148,7 +148,13 @@ env-var prefix bound to flags via `ff.WithEnvVarPrefix` — `cmd/ecdb` → `ECDB
   [`doc/reference/database-management.md`](doc/reference/database-management.md).
 - **`cmd/ec`** — starts/stops the server; runs migrations automatically on open,
   but **must never create a persistent database** (fail if the file is missing).
-  It may spin up an in-memory database for testing.
+  It may spin up an in-memory database for testing. **For a throwaway test or dev
+  server, prefer `ec serve --memory`** (env `EC_MEMORY`): it serves a fresh,
+  migrated, in-memory database that never touches disk and auto-seeds a well-known
+  admin (`admin@ecv6.example.com` / `password`), so no `ecdb create`/`admin create`
+  setup is needed — just log in. `--memory` and `--data`/`EC_DATA` are mutually
+  exclusive (blank `EC_DATA` if a loaded `.env*` sets it). See
+  [`doc/how-to/create-and-verify-a-database.md`](doc/how-to/create-and-verify-a-database.md).
 
 Build/test: `go build ./...`, `go test ./...`, `go vet ./...`, `gofmt`; or the
 `Makefile` targets (`make build`, `make test`, `make generate`, `make verify`).
