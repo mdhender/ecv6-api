@@ -82,13 +82,27 @@ func decodeOptionalJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // decodeJSONBody is the shared core of decodeJSON and decodeOptionalJSON. When
 // optional is true an empty body (io.EOF from the first decode) is reported as
 // success rather than a 400.
+//
+// Decoding is strict: DisallowUnknownFields rejects a body carrying a field the
+// target struct does not define (a misspelled or stray field is a client error,
+// not a silently ignored no-op), and a second decode must reach io.EOF so a body
+// with trailing data after the JSON value (`{...}{junk}`) is rejected too. Both
+// map to the same 400 bad_request envelope as a syntactically malformed body.
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any, optional bool) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		if optional && errors.Is(err, io.EOF) {
 			return true
 		}
+		writeError(w, r, http.StatusBadRequest, codeBadRequest, "request body is not valid JSON")
+		return false
+	}
+	// A well-formed request body holds exactly one JSON value; a second decode
+	// must therefore hit io.EOF. Any other result (another value, trailing
+	// garbage) is a malformed request.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		writeError(w, r, http.StatusBadRequest, codeBadRequest, "request body is not valid JSON")
 		return false
 	}
