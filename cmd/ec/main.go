@@ -13,6 +13,7 @@ import (
 
 	ecv6 "github.com/mdhender/ecv6-api"
 	"github.com/mdhender/ecv6-api/internal/cli"
+	"github.com/mdhender/ecv6-api/internal/secret"
 	"github.com/peterbourgon/ff/v4"
 )
 
@@ -42,13 +43,14 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 	dataDir := serveFlags.StringLong("data", "", "folder holding the database (ec.db); or set EC_DATA")
 	listen := serveFlags.StringLong("listen", ":8080", "TCP address the server listens on")
 	dev := serveFlags.BoolLong("dev", "enable development-only affordances")
+	secretCost := serveFlags.IntLong("secret-cost", secret.DefaultCost, "bcrypt cost (rounds) for hashing account secrets; or set EC_SECRET_COST")
 	serveCmd := &ff.Command{
 		Name:      "serve",
 		Usage:     "ec serve [FLAGS]",
 		ShortHelp: "open the existing database and run the API server",
 		Flags:     serveFlags,
 		Exec: func(ctx context.Context, _ []string) error {
-			return cmdServe(ctx, log, *dataDir, *listen, *dev)
+			return cmdServe(ctx, log, *dataDir, *listen, *dev, *secretCost)
 		},
 	}
 	rootCmd.Subcommands = append(rootCmd.Subcommands, serveCmd)

@@ -21,7 +21,7 @@ import (
 // The token is high-entropy (256 bits), so a fast hash (SHA-256) is the correct
 // choice for it — unlike an account secret, there is nothing to brute-force, and
 // resolving a bearer credential on every request must be cheap. This is why the
-// token uses SHA-256 while the secret uses PBKDF2.
+// token uses SHA-256 while the secret uses bcrypt.
 const (
 	// tokenBytes is the token's entropy in bytes (256 bits).
 	tokenBytes = 32

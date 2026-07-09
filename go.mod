@@ -11,6 +11,7 @@ require (
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/oapi-codegen/runtime v1.4.2
 	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
+	golang.org/x/crypto v0.54.0
 	zombiezen.com/go/sqlite v1.4.2
 )
 
@@ -28,8 +29,8 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	modernc.org/libc v1.65.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

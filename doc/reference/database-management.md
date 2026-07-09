@@ -130,6 +130,44 @@ Exits `0` if the database exists and its version equals the expected version;
 exits `1` otherwise (missing database, version mismatch, or not an EC database).
 Read-only. Intended as a scriptable guard.
 
+### `ecdb admin create --secret SECRET [--secret-cost N] [--email EMAIL] [--display-name NAME] PATH`
+
+Creates an active administrator account (`is_admin = true`, `is_active = true`) in
+`PATH/ec.db`. This is how the first administrator is seeded: `ecdb` writes directly
+to the database it owns, so no running server and no existing admin are needed to
+bootstrap. Prints `created admin account <id> (<email>)` to standard error.
+
+- **Opens an existing database; never creates one.** Like `migration up`, it fails
+  with a "database not found" error if `PATH/ec.db` is missing — create it with
+  `ecdb create` first. Any missing migrations are applied on open.
+- **`--secret`** sets the account secret and is **required**. It may instead be
+  supplied through the `ECDB_SECRET` environment variable (the same flag through the
+  `ECDB_` env prefix); an explicit `--secret` flag wins over the environment. If
+  neither is set, the command is a usage error and exits non-zero. The secret is
+  stored only as a bcrypt hash, never in plaintext.
+- **`--secret-cost`** sets the bcrypt cost (rounds) used to hash the secret. It
+  defaults to bcrypt's recommended cost (`10`); lower it only for throwaway test
+  fixtures where speed matters more than strength. A cost above bcrypt's maximum
+  (`31`) is an error.
+- **`--email`** defaults to `admin@ecv6.example.com` and is **coerced to lowercase**
+  before storage, so account identities stay canonical.
+- **`--display-name`** defaults to `admin`.
+- **Fails on a duplicate email.** The `email` column is unique; a second account
+  with the same (lowercased) email is a conflict, not an overwrite.
+
+```
+$ ecdb create games/example
+$ ecdb admin create --secret 's3cret!' --email owner@example.com games/example
+created admin account 1 (owner@example.com)
+```
+
+Prefer passing the secret through `ECDB_SECRET` to keep it out of shell history and
+the process argument list:
+
+```
+$ ECDB_SECRET='s3cret!' ecdb admin create --email owner@example.com games/example
+```
+
 ## Migrations
 
 Migrations are an ordered, **append-only** list compiled into the binary. Applying

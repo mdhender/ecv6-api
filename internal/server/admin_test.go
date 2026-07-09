@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mdhender/ecv6-api/internal/api"
+	"github.com/mdhender/ecv6-api/internal/secret"
 	"github.com/mdhender/ecv6-api/internal/store"
 )
 
@@ -24,7 +25,7 @@ func newTestServerDev(t *testing.T) *Server {
 		t.Fatalf("OpenTemporary: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return New(Config{Addr: ":0", DevMode: true}, db, nil, "9.9.9-test")
+	return New(Config{Addr: ":0", DevMode: true, SecretCost: secret.MinCost}, db, nil, "9.9.9-test")
 }
 
 // closed reports whether the shutdown channel has been closed (i.e. a drain was

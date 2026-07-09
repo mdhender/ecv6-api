@@ -19,7 +19,7 @@ import (
 // server until interrupted (SIGINT/SIGTERM), then shuts down gracefully. It
 // never creates a database: a missing store.db is a fatal error, not a prompt to
 // create one — that is ecdb's job.
-func cmdServe(ctx context.Context, log *slog.Logger, dataDir, listen string, dev bool) error {
+func cmdServe(ctx context.Context, log *slog.Logger, dataDir, listen string, dev bool, secretCost int) error {
 	if dataDir == "" {
 		return fmt.Errorf("serve: no data folder set (pass --data or set EC_DATA)")
 	}
@@ -37,8 +37,9 @@ func cmdServe(ctx context.Context, log *slog.Logger, dataDir, listen string, dev
 	defer stop()
 
 	srv := server.New(server.Config{
-		Addr:    listen,
-		DevMode: dev,
+		Addr:       listen,
+		DevMode:    dev,
+		SecretCost: secretCost,
 	}, db, log, ecv6.Version().String())
 
 	if err := srv.Run(runCtx); err != nil {

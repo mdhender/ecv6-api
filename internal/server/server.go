@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mdhender/ecv6-api/internal/secret"
 	"github.com/mdhender/ecv6-api/internal/store"
 )
 
@@ -24,6 +25,10 @@ type Config struct {
 	// route, added later). It changes no behavior in the skeleton beyond being
 	// reported to the log.
 	DevMode bool
+	// SecretCost is the bcrypt cost used to hash account secrets. Zero means
+	// secret.DefaultCost — the secure production default — so the zero-value Config
+	// is safe. Tests set it to secret.MinCost to keep hashing fast.
+	SecretCost int
 }
 
 // Server serves the application API over net/http. Construct it with New and run
@@ -33,6 +38,13 @@ type Server struct {
 	db      *store.DB
 	log     *slog.Logger
 	version string
+
+	// secretCost is the resolved bcrypt cost (Config.SecretCost, defaulted to
+	// secret.DefaultCost) used by hashSecret.
+	secretCost int
+	// decoySecretHash is a valid bcrypt hash at secretCost, verified against on a
+	// login for an unknown account so timing matches a real check (see handlers.go).
+	decoySecretHash string
 
 	// shutdown is closed once to request the same graceful drain as an interrupt
 	// signal; Run selects on it alongside the run context. shutdownOnce guards the
@@ -48,7 +60,24 @@ func New(cfg Config, db *store.DB, logger *slog.Logger, version string) *Server 
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{cfg: cfg, db: db, log: logger, version: version, shutdown: make(chan struct{})}
+	// A zero cost means "unset": use the secure production default. The decoy hash
+	// is computed once here at the same cost, so an unknown-account login does the
+	// same bcrypt work as a real one (equal timing). An error leaves the decoy
+	// empty, which still fails to verify — it only weakens the timing guarantee.
+	cost := cfg.SecretCost
+	if cost == 0 {
+		cost = secret.DefaultCost
+	}
+	decoy, _ := secret.Hash(loginDecoySecret, cost)
+	return &Server{
+		cfg:             cfg,
+		db:              db,
+		log:             logger,
+		version:         version,
+		secretCost:      cost,
+		decoySecretHash: decoy,
+		shutdown:        make(chan struct{}),
+	}
 }
 
 // triggerShutdown requests a graceful shutdown, waking Run to drain in-flight
