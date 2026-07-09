@@ -152,8 +152,9 @@ env-var prefix bound to flags via `ff.WithEnvVarPrefix` — `cmd/ecdb` → `ECDB
   server, prefer `ec serve --memory`** (env `EC_MEMORY`): it serves a fresh,
   migrated, in-memory database that never touches disk and auto-seeds a well-known
   admin (`admin@ecv6.example.com` / `password`), so no `ecdb create`/`admin create`
-  setup is needed — just log in. `--memory` and `--data`/`EC_DATA` are mutually
-  exclusive (blank `EC_DATA` if a loaded `.env*` sets it). See
+  setup is needed — just log in. `--memory` overrides an ambient `EC_DATA` from a
+  loaded `.env*` (so you need not blank it) and only conflicts with an **explicit**
+  `--data` flag on the command line. See
   [`doc/how-to/create-and-verify-a-database.md`](doc/how-to/create-and-verify-a-database.md).
 
 Build/test: `go build ./...`, `go test ./...`, `go vet ./...`, `gofmt`; or the

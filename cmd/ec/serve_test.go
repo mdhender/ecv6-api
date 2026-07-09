@@ -75,6 +75,71 @@ func TestServeMemoryRejectsDataDir(t *testing.T) {
 	}
 }
 
+// TestResolveServeStore covers the five allowed --memory / --data combinations
+// resolveServeStore encodes, including the fix for #48: an explicit --memory
+// overrides a data dir that came only from the ambient EC_DATA (dataFromCLI
+// false), while an explicit command-line --data still conflicts.
+func TestResolveServeStore(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		memory      bool
+		dataDir     string
+		dataFromCLI bool
+		wantMemory  bool
+		wantDir     string
+		wantErr     bool
+	}{
+		{name: "memory with explicit --data conflicts", memory: true, dataDir: "games/example", dataFromCLI: true, wantErr: true},
+		{name: "memory overrides env-sourced data dir", memory: true, dataDir: "games/example", dataFromCLI: false, wantMemory: true, wantDir: ""},
+		{name: "memory with no data dir", memory: true, dataDir: "", dataFromCLI: false, wantMemory: true, wantDir: ""},
+		{name: "persistent with data dir (flag)", memory: false, dataDir: "games/example", dataFromCLI: true, wantMemory: false, wantDir: "games/example"},
+		{name: "persistent with data dir (env)", memory: false, dataDir: "games/example", dataFromCLI: false, wantMemory: false, wantDir: "games/example"},
+		{name: "no memory and no data dir errors", memory: false, dataDir: "", dataFromCLI: false, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			useMemory, dir, err := resolveServeStore(tc.memory, tc.dataDir, tc.dataFromCLI)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("resolveServeStore(%v, %q, %v) = (%v, %q, nil), want an error", tc.memory, tc.dataDir, tc.dataFromCLI, useMemory, dir)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveServeStore(%v, %q, %v) unexpected error: %v", tc.memory, tc.dataDir, tc.dataFromCLI, err)
+			}
+			if useMemory != tc.wantMemory || dir != tc.wantDir {
+				t.Fatalf("resolveServeStore(%v, %q, %v) = (%v, %q), want (%v, %q)", tc.memory, tc.dataDir, tc.dataFromCLI, useMemory, dir, tc.wantMemory, tc.wantDir)
+			}
+		})
+	}
+}
+
+// TestDataFlagOnCLI checks the command-line --data detector recognizes the
+// space-separated and attached forms (long and short) and reports false when
+// --data is absent, so an env-sourced EC_DATA is not mistaken for an explicit flag.
+func TestDataFlagOnCLI(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "long space-separated", args: []string{"serve", "--data", "games/example"}, want: true},
+		{name: "long attached", args: []string{"serve", "--data=games/example"}, want: true},
+		{name: "short space-separated", args: []string{"serve", "-data", "games/example"}, want: true},
+		{name: "short attached", args: []string{"serve", "-data=games/example"}, want: true},
+		{name: "memory only", args: []string{"serve", "--memory"}, want: false},
+		{name: "no data flag", args: []string{"serve", "--listen", ":8080"}, want: false},
+		{name: "nil args", args: nil, want: false},
+		{name: "stops at bare dashdash", args: []string{"serve", "--", "--data", "x"}, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := dataFlagOnCLI(tc.args); got != tc.want {
+				t.Fatalf("dataFlagOnCLI(%q) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestServeRejectsOutOfRangeSecretCost confirms cmdServe fails fast on a
 // --secret-cost outside the valid bcrypt range [secret.MinCost, secret.MaxCost],
 // before opening any store. A cost bcrypt would reject must not reach server.New,
