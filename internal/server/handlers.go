@@ -84,6 +84,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := string(req.Email)
+	if email == "" || req.Secret == "" {
+		// this is not an attack that can enumerate an email or secret, but it could be a DOS.
+		// short circuit the request.
+		writeError(w, r, http.StatusUnauthorized, codeUnauthorized, "invalid email or secret")
+		return
+	}
 
 	account, err := s.db.GetAccountByEmail(r.Context(), email)
 	if err != nil {
