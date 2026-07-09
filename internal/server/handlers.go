@@ -4,6 +4,7 @@ package server
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"time"
 
@@ -46,6 +47,15 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	schema, err := s.schemaVersion(r.Context())
 	if err != nil {
 		logger(r).ErrorContext(r.Context(), "version: read schema version", "err", err)
+		writeError(w, r, http.StatusInternalServerError, codeInternal, "could not read database version")
+		return
+	}
+	// The wire field is int32 (spec-driven, openapi.yaml). The schema version is a
+	// small non-negative migration count, so an out-of-range value is impossible in
+	// practice; guard the narrowing anyway so a corrupt or absurd value surfaces as
+	// an internal error rather than silently wrapping to a negative number.
+	if schema < 0 || schema > math.MaxInt32 {
+		logger(r).ErrorContext(r.Context(), "version: schema version out of range", "schema", schema)
 		writeError(w, r, http.StatusInternalServerError, codeInternal, "could not read database version")
 		return
 	}

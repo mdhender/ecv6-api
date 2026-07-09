@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -189,6 +190,21 @@ func TestVersionDoesNotCacheFailure(t *testing.T) {
 	}
 	if want := int32(store.ExpectedVersion()); got.Database.SchemaVersion != want {
 		t.Errorf("schemaVersion = %d, want %d", got.Database.SchemaVersion, want)
+	}
+}
+
+// TestVersionRejectsOutOfRangeSchema confirms /version returns 500 rather than a
+// wrapped negative SchemaVersion when the schema version cannot fit the int32 wire
+// field. The value is injected via the readSchemaVersion seam (issue #46).
+func TestVersionRejectsOutOfRangeSchema(t *testing.T) {
+	srv := newTestServer(t)
+	srv.readSchemaVersion = func(ctx context.Context) (int, error) {
+		return math.MaxInt32 + 1, nil
+	}
+
+	rec, _ := getVersion(t, srv)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
 	}
 }
 
