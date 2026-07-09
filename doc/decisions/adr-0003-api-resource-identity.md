@@ -52,12 +52,13 @@ label** (the *faction*, not the seat, carries an in-game name). Consequently:
 
 ## Consequences
 
-- **Vocabulary drift to fix.** `CLAUDE.md`'s domain vocabulary still defines the
-  game id as a GM-chosen slug; it must be updated to "integer PK, with `name` as
-  the human label." Upstream `games.md`
-  ([ecv6-docs](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/games.md))
-  may likewise reference a GM-chosen game id and should be reconciled under the
-  docs-lead workflow. Tracked as a follow-up, not done in this ADR.
+- **Vocabulary drift (reconciled in this repo).** `CLAUDE.md`'s domain vocabulary
+  and [`doc/model.md`](../model.md) now describe the game id as an integer PK with
+  `name` as the human label; the earlier "GM-chosen slug" wording is gone. The one
+  remaining slug reference is upstream `games.md`
+  ([ecv6-docs](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/games.md)),
+  which may likewise call the game id a GM-chosen slug and should be reconciled
+  under the docs-lead workflow — tracked in that repo, not in this ADR.
 - **`player_id` is game-consumed and may address determinism streams** (draws
   keyed by "a player's id" — see [../determinism.md](../determinism.md)). Its
   "never reused, stable once assigned" property is therefore not just a roster

@@ -7,17 +7,18 @@ info:
     checked against it. Change the spec first, then the code.
 
 
-    This draft covers the **application** surface only — system, authentication,
-    the authenticated account context, account administration, and game catalog/
-    lifecycle/roster management. The **game engine** surface (turns, orders, and
-    the cluster/faction read model) is deferred to a later pass.
+    This version covers the complete **application** surface — system,
+    authentication, the authenticated account context, account administration,
+    and game catalog/lifecycle/roster management. The **game engine** surface
+    (turns, orders, and the cluster/faction read model) is intentionally not part
+    of this contract yet; it lands in a later pass with the engine.
 
 
     Authentication is an opaque, server-side **session token** presented as a
     bearer credential (see ADR-0002). Routes are unversioned under `/api`
     (ADR-0006). Identity: games and accounts are keyed by integer PK; a game
     member is a seat with an immutable `playerId` (ADR-0003).
-  version: 0.1.0
+  version: 0.2.0
 servers:
   - url: /api
     description: API base (unversioned; no /v1 segment)

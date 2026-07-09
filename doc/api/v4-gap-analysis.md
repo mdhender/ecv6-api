@@ -164,9 +164,10 @@ Where v4 predates an adopted decision. These do **not** survive the port intact.
   PK, or both.
 - **Disposition:** **Resolved — [ADR-0003](../decisions/adr-0003-api-resource-identity.md).**
   Game is keyed by its **integer PK** (`gameId`); v4's uppercase `code`/slug is
-  dropped as redundant, and `name` is the human label. Follow-up: `CLAUDE.md`
-  domain vocabulary (and upstream `games.md`) still call the game id a GM-chosen
-  slug and must be reconciled.
+  dropped as redundant, and `name` is the human label. Follow-up: reconciled in
+  this repo — `CLAUDE.md` and [`model.md`](../model.md) now describe the game id
+  as an integer PK with `name` as the label; only upstream `games.md` (separate
+  ecv6-docs repo) may still call it a GM-chosen slug, tracked there.
 
 ### G8 — `username` vs `email`
 *(Application · Design)*
