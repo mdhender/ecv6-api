@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,15 +43,28 @@ func requestID(ctx context.Context) string {
 	return ""
 }
 
-// newRequestID returns a short random hex correlation id. It falls back to a
-// timestamp-derived value on the (practically impossible) chance crypto/rand
-// fails, so a request is never left without an id.
+// newRequestID returns a short random hex correlation id. It falls back to
+// fallbackRequestID on the (practically impossible) chance crypto/rand fails, so
+// a request is never left without an id.
 func newRequestID() string {
 	var b [12]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return "t" + hex.EncodeToString([]byte(time.Now().UTC().Format("150405.000")))
+		return fallbackRequestID()
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// fallbackCounter backs fallbackRequestID's process-wide monotonic sequence.
+var fallbackCounter atomic.Uint64
+
+// fallbackRequestID mints a correlation id without crypto/rand, used only when
+// rand.Read fails. It combines a process-wide atomic counter with the nanosecond
+// timestamp so the result is unique even for concurrent requests in the same
+// instant. The value stays within validRequestID's charset (base-36 digits and
+// '-'), so it is always a valid, non-empty correlation id.
+func fallbackRequestID() string {
+	n := fallbackCounter.Add(1)
+	return "t" + strconv.FormatInt(time.Now().UnixNano(), 36) + "-" + strconv.FormatUint(n, 36)
 }
 
 // maxRequestIDLen caps the length of an inbound X-Request-Id we are willing to
