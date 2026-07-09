@@ -84,7 +84,26 @@ pass/fail check that the two agree.
 
 ## Start the new server
 
-Start `ec` again. It opens the upgraded database and serves as usual.
+Start `ec` again. It opens the upgraded database and serves as usual:
+
+```
+$ ec serve --data games/example
+```
+
+`ec serve` takes these flags (each also settable through its `EC_`-prefixed
+environment variable; run `ec serve --help` for the authoritative list):
+
+- `--data DIR` (`EC_DATA`) — the folder holding `ec.db`. Required; `ec` opens it
+  but never creates it.
+- `--listen ADDR` — TCP address to listen on (default `:8080`).
+- `--dev` — enable development-only affordances (e.g. the admin shutdown route).
+- `--secret-cost N` (`EC_SECRET_COST`) — bcrypt cost used to hash account secrets
+  (default `10`). Keep it at the default in production; lower it only in throwaway
+  dev or test setups where hashing speed matters more than strength.
+
+Keep `--secret-cost` the same across an upgrade unless you mean to change it:
+existing hashes carry their own cost and still verify, but every newly set secret
+is hashed at the current value.
 
 ## Roll back
 

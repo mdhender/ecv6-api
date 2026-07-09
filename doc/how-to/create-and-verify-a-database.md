@@ -126,7 +126,22 @@ if ! ecdb migration verify games/example; then
 fi
 ```
 
-> **Environments.** On every run, `ecdb` loads `.env` files selected by `ECDB_ENV`
-> (default `development`). This changes only which configuration is loaded, not
-> where the database goes — that is always the folder you pass on the command
-> line.
+## Start the server
+
+With the database in place, hand the same folder to `ec serve`:
+
+```
+$ ec serve --data games/example
+```
+
+`ec` opens the existing `ec.db` (never creating one), applies any pending
+migrations, and serves on `:8080`. Override the address with `--listen`, and set
+the bcrypt cost for hashing account secrets with `--secret-cost N` (`EC_SECRET_COST`,
+default `10`) — keep the default in production and lower it only in throwaway dev
+or test setups. Run `ec serve --help` for the full flag list; each flag is also
+settable through its `EC_`-prefixed environment variable.
+
+> **Environments.** On every run, `ecdb` and `ec` load `.env` files selected by
+> `ECDB_ENV` and `EC_ENV` respectively (default `development`). This changes only
+> which configuration is loaded — e.g. `EC_SECRET_COST` — not where the database
+> goes, which is always the folder you pass on the command line.
