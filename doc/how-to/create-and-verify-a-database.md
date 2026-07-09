@@ -164,9 +164,11 @@ Log in with those well-known credentials — email `admin@ecv6.example.com`, sec
 credentials are hard-coded for testing convenience and are safe only because
 in-memory mode holds no persistent data; **never** use it to serve real data.
 
-`--memory` and `--data`/`EC_DATA` are mutually exclusive (setting both is a usage
-error), and a persistent on-disk database is **never** auto-seeded — those are
-seeded deliberately with [`ecdb admin create`](../reference/database-management.md).
+`--memory` overrides an ambient `EC_DATA` sourced from a loaded `.env*`, so you do
+not need to blank it first; it only conflicts with an **explicit** `--data` flag
+passed on the command line (that combination is a usage error). A persistent
+on-disk database is **never** auto-seeded — those are seeded deliberately with
+[`ecdb admin create`](../reference/database-management.md).
 
 > **Environments.** On every run, `ecdb` and `ec` load `.env` files selected by
 > `ECDB_ENV` and `EC_ENV` respectively (default `development`). This changes only

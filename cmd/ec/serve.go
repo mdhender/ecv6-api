@@ -32,15 +32,50 @@ const (
 	MemoryAdminSecret = "password"
 )
 
+// resolveServeStore decides how "ec serve" should back its store from the
+// resolved --memory / --data inputs, encoding the five allowed combinations:
+//
+//   - memory && dataFromCLI            -> error: an explicit --data on the command
+//     line genuinely conflicts with --memory.
+//   - memory && !dataFromCLI           -> in-memory: --memory is an explicit
+//     throwaway intent, so it overrides a data dir that came only from the ambient
+//     EC_DATA environment (or no data dir at all); the env data dir is ignored.
+//   - !memory && dataDir != ""         -> persistent: open the on-disk store.
+//   - !memory && dataDir == ""         -> error: no data folder was configured.
+//
+// dataFromCLI must report whether --data was passed as a command-line flag (as
+// opposed to sourced from EC_DATA); the flag/parse layer supplies it, because ff
+// applies env vars via the same SetValue path as command-line flags and so cannot
+// itself distinguish the two. The returned dir is "" whenever useMemory is true.
+func resolveServeStore(memory bool, dataDir string, dataFromCLI bool) (useMemory bool, dir string, err error) {
+	if memory {
+		if dataFromCLI {
+			return false, "", fmt.Errorf("serve: --memory and --data are mutually exclusive (unset one)")
+		}
+		// An EC_DATA-sourced (or absent) data dir yields to the explicit --memory.
+		return true, "", nil
+	}
+	if dataDir == "" {
+		return false, "", fmt.Errorf("serve: no data folder set (pass --data or set EC_DATA, or use --memory)")
+	}
+	return false, dataDir, nil
+}
+
 // cmdServe opens the database and runs the HTTP server until interrupted
 // (SIGINT/SIGTERM), then shuts down gracefully.
 //
 // With memory set, it serves a fresh, migrated, in-memory database that never
 // touches disk and auto-seeds the well-known admin (MemoryAdminEmail /
-// MemoryAdminSecret) so the server is immediately usable; --memory and --data are
-// mutually exclusive. Otherwise it opens the existing on-disk database in dataDir:
-// it never creates one, so a missing ec.db is a fatal error, not a prompt to
-// create it — that is ecdb's job — and an on-disk store is never auto-seeded.
+// MemoryAdminSecret) so the server is immediately usable. Otherwise it opens the
+// existing on-disk database in dataDir: it never creates one, so a missing ec.db
+// is a fatal error, not a prompt to create it — that is ecdb's job — and an
+// on-disk store is never auto-seeded.
+//
+// The serve command resolves --memory / --data through resolveServeStore before
+// calling cmdServe, so a normal invocation never reaches here with both set. The
+// memory-and-dataDir guard below is therefore the explicit-conflict path: a direct
+// caller passing both a data dir and memory has stated a genuine conflict (an
+// explicit --data alongside --memory), and cmdServe rejects it.
 func cmdServe(ctx context.Context, log *slog.Logger, dataDir, listen string, dev, memory bool, secretCost int) error {
 	// Validate the bcrypt cost before opening anything. An out-of-range cost is a
 	// hard misconfiguration: too high and bcrypt rejects it, which would leave the

@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	ecv6 "github.com/mdhender/ecv6-api"
 	"github.com/mdhender/ecv6-api/internal/cli"
@@ -28,13 +29,39 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ec: %v\n", err)
 		os.Exit(1)
 	}
-	cmd, logging := newRootCommand()
-	os.Exit(cli.Run(context.Background(), cmd, "EC", os.Args[1:], logging))
+	args := os.Args[1:]
+	cmd, logging := newRootCommand(args)
+	os.Exit(cli.Run(context.Background(), cmd, "EC", args, logging))
+}
+
+// dataFlagOnCLI reports whether --data (equivalently -data) was passed as a
+// command-line flag in args, in either the space-separated (`--data DIR`) or
+// attached (`--data=DIR`) form. It lets serve distinguish an explicit --data from
+// a data dir sourced only from EC_DATA: ff sets both through the same SetValue
+// path during Parse, so the parsed flag alone cannot tell them apart. Scanning
+// stops at a bare "--", which ends flag parsing. Over-detection is safe here — the
+// worst case is treating an explicit --data as the conflict it already is.
+func dataFlagOnCLI(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		switch {
+		case a == "--data", a == "-data":
+			return true
+		case strings.HasPrefix(a, "--data="), strings.HasPrefix(a, "-data="):
+			return true
+		}
+	}
+	return false
 }
 
 // newRootCommand builds the ec command tree, returning it alongside the shared
-// logging setup so main can apply the resolved log level after parsing.
-func newRootCommand() (*ff.Command, *cli.Logging) {
+// logging setup so main can apply the resolved log level after parsing. args is
+// the raw command-line slice, scanned for an explicit --data so serve can let
+// --memory override an env-sourced EC_DATA while still rejecting an explicit
+// --data (see resolveServeStore).
+func newRootCommand(args []string) (*ff.Command, *cli.Logging) {
 	rootFlags := ff.NewFlagSet("ec")
 	logging := cli.NewLogging(rootFlags)
 	log := logging.Logger
@@ -57,7 +84,11 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		ShortHelp: "open the existing database and run the API server",
 		Flags:     serveFlags,
 		Exec: func(ctx context.Context, _ []string) error {
-			return cmdServe(ctx, log, *dataDir, *listen, *dev, *memory, *secretCost)
+			useMemory, dir, err := resolveServeStore(*memory, *dataDir, dataFlagOnCLI(args))
+			if err != nil {
+				return err
+			}
+			return cmdServe(ctx, log, dir, *listen, *dev, useMemory, *secretCost)
 		},
 	}
 	rootCmd.Subcommands = append(rootCmd.Subcommands, serveCmd)
