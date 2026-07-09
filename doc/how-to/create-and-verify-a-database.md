@@ -141,6 +141,33 @@ default `10`) — keep the default in production and lower it only in throwaway 
 or test setups. Run `ec serve --help` for the full flag list; each flag is also
 settable through its `EC_`-prefixed environment variable.
 
+## Serve a throwaway in-memory database
+
+For a quick dev spin or a smoke test you do not need a database on disk at all.
+`ec serve --memory` (`EC_MEMORY`) serves a fresh, migrated, in-memory database
+that **never touches disk** and vanishes when the process exits:
+
+```
+$ ec serve --memory
+```
+
+Because an in-memory database is empty and process-local, `ecdb` cannot seed it
+(that is a different process, with different memory). So `--memory` instead
+**auto-seeds one well-known admin** at startup and logs the credentials at `WARN`:
+
+```
+level=WARN msg="in-memory server: seeded well-known admin" email=admin@ecv6.example.com secret=password
+```
+
+Log in with those well-known credentials — email `admin@ecv6.example.com`, secret
+`password` — and the server is immediately usable, no `ecdb` setup required. These
+credentials are hard-coded for testing convenience and are safe only because
+in-memory mode holds no persistent data; **never** use it to serve real data.
+
+`--memory` and `--data`/`EC_DATA` are mutually exclusive (setting both is a usage
+error), and a persistent on-disk database is **never** auto-seeded — those are
+seeded deliberately with [`ecdb admin create`](../reference/database-management.md).
+
 > **Environments.** On every run, `ecdb` and `ec` load `.env` files selected by
 > `ECDB_ENV` and `EC_ENV` respectively (default `development`). This changes only
 > which configuration is loaded — e.g. `EC_SECRET_COST` — not where the database
