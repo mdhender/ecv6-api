@@ -58,7 +58,7 @@
 // call. A missing, malformed, unknown, revoked, or expired credential — and a
 // deactivated account — all yield the same opaque 401 so a caller cannot tell
 // them apart. The resolved account and session are stashed on the request context
-// (accountFromContext, sessionFromContext). Secrets are stored only as PBKDF2
+// (accountFromContext, sessionFromContext). Secrets are stored only as bcrypt
 // hashes (secret.go); tokens only as SHA-256 hashes (token.go). An impersonation
 // session additionally carries the acting admin as the auditable actor and sets
 // the Impersonated-Subject response header (ADR-0002).

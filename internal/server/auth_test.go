@@ -67,28 +67,6 @@ func doLogout(t *testing.T, s *Server, token string, allSessions bool) int {
 // nowish returns the current time, for future-time assertions.
 func nowish() time.Time { return time.Now() }
 
-func TestHashSecretVerify(t *testing.T) {
-	hashed, err := HashSecret("correct horse battery staple")
-	if err != nil {
-		t.Fatalf("HashSecret: %v", err)
-	}
-	if hashed2, _ := HashSecret("correct horse battery staple"); hashed2 == hashed {
-		t.Errorf("two hashes of the same secret are identical; salt not applied")
-	}
-	if !VerifySecret(hashed, "correct horse battery staple") {
-		t.Errorf("VerifySecret rejected the correct secret")
-	}
-	if VerifySecret(hashed, "wrong secret") {
-		t.Errorf("VerifySecret accepted a wrong secret")
-	}
-	if VerifySecret("garbage", "anything") {
-		t.Errorf("VerifySecret accepted a malformed hash")
-	}
-	if VerifySecret("", "anything") {
-		t.Errorf("VerifySecret accepted an empty hash")
-	}
-}
-
 func TestTokenHashStable(t *testing.T) {
 	tok, err := newToken()
 	if err != nil {

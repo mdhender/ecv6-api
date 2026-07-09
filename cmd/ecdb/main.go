@@ -11,10 +11,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	ecv6 "github.com/mdhender/ecv6-api"
 	"github.com/mdhender/ecv6-api/internal/cli"
+	"github.com/mdhender/ecv6-api/internal/secret"
 	"github.com/mdhender/ecv6-api/internal/store"
 	"github.com/peterbourgon/ff/v4"
 )
@@ -137,7 +139,34 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		Subcommands: []*ff.Command{migrationUpCmd, migrationVersionCmd, migrationVerifyCmd},
 	}
 
-	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, backupCmd, compactCmd, versionCmd, migrationCmd)
+	adminFlags := ff.NewFlagSet("admin").SetParent(rootFlags)
+
+	adminCreateFlags := ff.NewFlagSet("create").SetParent(adminFlags)
+	// --secret has no default: the value can also arrive via ECDB_SECRET (ff's
+	// env-var binding fills it during Parse), so we check for emptiness in Exec
+	// rather than marking the flag required, which would only see the command line.
+	adminSecret := adminCreateFlags.StringLong("secret", "", "account secret (or set ECDB_SECRET); required")
+	adminEmail := adminCreateFlags.StringLong("email", "admin@ecv6.example.com", "account email (coerced to lowercase)")
+	adminDisplayName := adminCreateFlags.StringLong("display-name", "admin", "account display name")
+	adminCreateCmd := &ff.Command{
+		Name:      "create",
+		Usage:     "ecdb admin create --secret SECRET [--email EMAIL] [--display-name NAME] PATH",
+		ShortHelp: "create an admin account in the database in folder PATH",
+		Flags:     adminCreateFlags,
+		Exec: func(ctx context.Context, args []string) error {
+			return cmdAdminCreate(ctx, log, args, *adminSecret, *adminEmail, *adminDisplayName)
+		},
+	}
+
+	adminCmd := &ff.Command{
+		Name:        "admin",
+		Usage:       "ecdb admin SUBCOMMAND ...",
+		ShortHelp:   "administrative account commands",
+		Flags:       adminFlags,
+		Subcommands: []*ff.Command{adminCreateCmd},
+	}
+
+	rootCmd.Subcommands = append(rootCmd.Subcommands, createCmd, backupCmd, compactCmd, versionCmd, migrationCmd, adminCmd)
 	return rootCmd, logging
 }
 
@@ -190,6 +219,49 @@ func cmdCreate(ctx context.Context, log *slog.Logger, args []string, overwrite b
 		return fmt.Errorf("create: cannot build database %s: %w", dbPath, err)
 	}
 	fmt.Fprintf(os.Stderr, "created database %s (version %d)\n", dbPath, store.ExpectedVersion())
+	return nil
+}
+
+// cmdAdminCreate creates an active admin account in the database in folder
+// args[0]. The database must already exist (ecdb create's job); admin create
+// never creates one. The secret is required and may be supplied via --secret or
+// the ECDB_SECRET environment variable; the email is coerced to lowercase (by
+// store.CreateAccount) so identities stay canonical.
+func cmdAdminCreate(ctx context.Context, log *slog.Logger, args []string, secretValue, email, displayName string) error {
+	folder, err := requirePath("admin create", args)
+	if err != nil {
+		return err
+	}
+	if secretValue == "" {
+		return fmt.Errorf("admin create: a secret is required (pass --secret or set ECDB_SECRET)")
+	}
+
+	hashed, err := secret.Hash(secretValue)
+	if err != nil {
+		return fmt.Errorf("admin create: hash secret: %w", err)
+	}
+
+	// OpenPersistent opens the existing store and applies any missing migrations;
+	// it never creates the file, so a missing database fails rather than being
+	// silently seeded.
+	db, err := store.OpenPersistent(ctx, log, folder)
+	if err != nil {
+		return fmt.Errorf("admin create: open database in %s: %w", folder, err)
+	}
+	defer db.Close()
+
+	log.Debug("admin create: starting", "folder", folder, "email", strings.ToLower(email))
+	id, err := db.CreateAccount(ctx, store.Account{
+		Email:        email, // CreateAccount lowercases before storing.
+		DisplayName:  displayName,
+		HashedSecret: hashed,
+		IsAdmin:      true,
+		IsActive:     true,
+	})
+	if err != nil {
+		return fmt.Errorf("admin create: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "created admin account %d (%s)\n", id, strings.ToLower(email))
 	return nil
 }
 

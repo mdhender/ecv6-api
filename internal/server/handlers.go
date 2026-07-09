@@ -20,7 +20,7 @@ import (
 // may change freely.
 const sessionTTL = 30 * 24 * time.Hour
 
-// decoySecretHash is a valid encoded PBKDF2 hash used to equalize login timing
+// decoySecretHash is a valid encoded bcrypt hash used to equalize login timing
 // when no account matches: verifying a presented secret against it does the same
 // work as a real check, so a caller cannot distinguish "no such account" from
 // "wrong secret" by response time. Computed once at startup.
