@@ -112,6 +112,66 @@ func (e *earl) logout(ctx context.Context, all bool) error {
 	}
 }
 
+// impersonationResponse is the subset of POST /admin/impersonation's payload
+// earl needs: the minted token and the subject it identifies. earl saves the
+// token under the subject's email, so it becomes a selectable identity.
+type impersonationResponse struct {
+	Token     string `json:"token"`
+	TokenType string `json:"tokenType"`
+	ExpiresAt string `json:"expiresAt"`
+	Subject   struct {
+		AccountID int64  `json:"accountId"`
+		Email     string `json:"email"`
+	} `json:"subject"`
+}
+
+// impersonate mints a bearer token for another account via POST
+// /admin/impersonation (an admin action, so it uses the active identity's token)
+// and saves it under the subject's email. Afterwards, --email <subject> selects
+// that identity, letting the caller exercise the API as the impersonated user.
+func (e *earl) impersonate(ctx context.Context, accountID int64) error {
+	store, err := e.loadTokens()
+	if err != nil {
+		return err
+	}
+	who, token := store.resolve(e.baseURL, e.email)
+	if token == "" {
+		if emails := store.emails(e.baseURL); len(emails) > 1 && e.email == "" {
+			return fmt.Errorf("multiple saved logins for %s; pass --email to pick the admin (one of: %s)", e.baseURL, strings.Join(emails, ", "))
+		}
+		return fmt.Errorf("no saved login for %s at %s; run `earl login` as an admin first", emailOrAny(e.email), e.baseURL)
+	}
+
+	reqBody, err := json.Marshal(map[string]int64{"accountId": accountID})
+	if err != nil {
+		return fmt.Errorf("encode impersonation request: %w", err)
+	}
+	status, respBody, err := e.do(ctx, http.MethodPost, "/admin/impersonation", reqBody, token)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return e.emit(http.MethodPost, "/admin/impersonation", status, respBody)
+	}
+
+	var ir impersonationResponse
+	if err := json.Unmarshal(respBody, &ir); err != nil {
+		return fmt.Errorf("parse impersonation response: %w", err)
+	}
+	if ir.Token == "" || ir.Subject.Email == "" {
+		return fmt.Errorf("impersonation response missing token or subject email")
+	}
+
+	store.put(e.baseURL, ir.Subject.Email, identity{Token: ir.Token, TokenType: ir.TokenType, ExpiresAt: parseTime(ir.ExpiresAt)})
+	if err := e.saveTokens(store); err != nil {
+		return err
+	}
+
+	subject := strings.ToLower(ir.Subject.Email)
+	fmt.Fprintf(e.errOut, "%s is now impersonating %s (account %d); select it with --email %s\n", who, subject, ir.Subject.AccountID, subject)
+	return nil
+}
+
 // parseTime parses an RFC 3339 timestamp (the server's expiresAt format),
 // returning the zero time when the string is empty or unparseable — the expiry
 // is advisory metadata, not worth failing a login over.

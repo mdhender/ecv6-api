@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -243,6 +244,24 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		},
 	}
 
+	impersonateFlags := ff.NewFlagSet("impersonate").SetParent(rootFlags)
+	impersonateCmd := &ff.Command{
+		Name:      "impersonate",
+		Usage:     "earl impersonate ACCOUNT_ID",
+		ShortHelp: "mint and save a bearer token for another account (admin)",
+		Flags:     impersonateFlags,
+		Exec: func(ctx context.Context, args []string) error {
+			if len(args) != 1 {
+				return fmt.Errorf("impersonate requires exactly one ACCOUNT_ID argument")
+			}
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil || id < 1 {
+				return fmt.Errorf("impersonate: ACCOUNT_ID must be a positive integer, got %q", args[0])
+			}
+			return newEarl().impersonate(ctx, id)
+		},
+	}
+
 	whoamiFlags := ff.NewFlagSet("whoami").SetParent(rootFlags)
 	whoamiCmd := &ff.Command{
 		Name:      "whoami",
@@ -262,7 +281,7 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		bodyCmd("post", http.MethodPost),
 		bodyCmd("patch", http.MethodPatch),
 		bodyCmd("delete", http.MethodDelete),
-		loginCmd, logoutCmd, whoamiCmd,
+		loginCmd, logoutCmd, impersonateCmd, whoamiCmd,
 	)
 	return rootCmd, logging
 }

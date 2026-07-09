@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -133,6 +134,55 @@ func TestEarlAdminCreateAccount(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "tester@example.com") {
 		t.Errorf("create account response = %q, want it to contain the new email", out.String())
+	}
+}
+
+func TestEarlImpersonate(t *testing.T) {
+	base := newTestAPI(t)
+	ctx := context.Background()
+	e, out, _ := newTestEarl(t, base, testAdminEmail)
+	if err := e.login(ctx, testAdminSecret); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+
+	// Create an active, non-admin account to impersonate.
+	body := []byte(`{"email":"tester@example.com","secret":"hunter2hunter2","isActive":true,"isAdmin":false}`)
+	if err := e.request(ctx, http.MethodPost, "/accounts", body, false); err != nil {
+		t.Fatalf("post /accounts: %v", err)
+	}
+	var created struct {
+		Account struct {
+			ID int64 `json:"id"`
+		} `json:"account"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &created); err != nil {
+		t.Fatalf("parse create response %q: %v", out.String(), err)
+	}
+	if created.Account.ID == 0 {
+		t.Fatalf("no account id in create response %q", out.String())
+	}
+
+	// Impersonate that account; the token is saved under its email.
+	if err := e.impersonate(ctx, created.Account.ID); err != nil {
+		t.Fatalf("impersonate: %v", err)
+	}
+	store, err := e.loadTokens()
+	if err != nil {
+		t.Fatalf("loadTokens: %v", err)
+	}
+	if _, tok := store.resolve(e.baseURL, "tester@example.com"); tok == "" {
+		t.Fatalf("no impersonation token saved for tester@example.com")
+	}
+
+	// Acting as the impersonated user (same token file, selected by --email),
+	// /me returns the tester's account.
+	var subOut bytes.Buffer
+	sub := &earl{baseURL: e.baseURL, email: "tester@example.com", log: e.log, http: e.http, out: &subOut, errOut: &bytes.Buffer{}}
+	if err := sub.request(ctx, http.MethodGet, "/me", nil, false); err != nil {
+		t.Fatalf("get /me as impersonated user: %v", err)
+	}
+	if !strings.Contains(subOut.String(), "tester@example.com") {
+		t.Errorf("/me as tester = %q, want it to contain tester@example.com", subOut.String())
 	}
 }
 
