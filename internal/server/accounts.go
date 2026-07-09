@@ -121,7 +121,7 @@ func (s *Server) handleCreateAccount(w http.ResponseWriter, r *http.Request) {
 		generated = &gen
 	}
 
-	hashed, err := HashSecret(secret)
+	hashed, err := s.hashSecret(secret)
 	if err != nil {
 		logger(r).ErrorContext(r.Context(), "accounts: hash secret", "err", err)
 		writeError(w, r, http.StatusInternalServerError, codeInternal, "could not create account")
@@ -225,7 +225,7 @@ func (s *Server) handleUpdateAccount(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, http.StatusBadRequest, codeBadRequest, "secret must be at least 8 characters")
 			return
 		}
-		hashed, err := HashSecret(*req.Secret)
+		hashed, err := s.hashSecret(*req.Secret)
 		if err != nil {
 			logger(r).ErrorContext(r.Context(), "accounts: hash secret", "err", err)
 			writeError(w, r, http.StatusInternalServerError, codeInternal, "could not update account")

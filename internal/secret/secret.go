@@ -8,6 +8,10 @@
 // is self-describing — it carries the algorithm, cost, and salt — so Verify needs
 // nothing but the stored string. bcrypt hashes at most the first 72 bytes of the
 // input and rejects longer secrets outright (ErrPasswordTooLong).
+//
+// The bcrypt cost is a caller-supplied parameter, not a package constant, so each
+// caller can trade speed for strength: production picks DefaultCost, tests drop to
+// MinCost to stay fast. Verify needs no cost — bcrypt reads it back from the hash.
 package secret
 
 import (
@@ -16,16 +20,23 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// cost is the bcrypt work factor. We use bcrypt.MinCost deliberately: EC is alpha
-// and account secrets are low-value, so the cheapest hash keeps account creation
-// and login fast. Raise this before the data becomes worth protecting.
-const cost = bcrypt.MinCost
+// Cost bounds, re-exported from bcrypt so callers can set and clamp a cost
+// without importing golang.org/x/crypto/bcrypt themselves.
+const (
+	// MinCost is the cheapest (weakest) bcrypt cost — for tests, never production.
+	MinCost = bcrypt.MinCost
+	// DefaultCost is bcrypt's recommended cost, the right choice for production.
+	DefaultCost = bcrypt.DefaultCost
+	// MaxCost is the most expensive (strongest, slowest) bcrypt cost.
+	MaxCost = bcrypt.MaxCost
+)
 
-// Hash returns a bcrypt hash of the plaintext secret, in the self-describing
-// encoded form to store in accounts.hashed_secret. Each call uses a fresh random
-// salt, so the same secret hashes differently every time. A secret longer than 72
-// bytes returns an error (bcrypt.ErrPasswordTooLong).
-func Hash(plaintext string) (string, error) {
+// Hash returns a bcrypt hash of the plaintext secret at the given cost, in the
+// self-describing encoded form to store in accounts.hashed_secret. Each call uses
+// a fresh random salt, so the same secret hashes differently every time. bcrypt
+// silently raises a cost below MinCost to DefaultCost; a cost above MaxCost, or a
+// secret longer than 72 bytes, returns an error.
+func Hash(plaintext string, cost int) (string, error) {
 	b, err := bcrypt.GenerateFromPassword([]byte(plaintext), cost)
 	if err != nil {
 		return "", fmt.Errorf("hash secret: %w", err)

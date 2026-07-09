@@ -20,11 +20,11 @@ import (
 // may change freely.
 const sessionTTL = 30 * 24 * time.Hour
 
-// decoySecretHash is a valid encoded bcrypt hash used to equalize login timing
-// when no account matches: verifying a presented secret against it does the same
-// work as a real check, so a caller cannot distinguish "no such account" from
-// "wrong secret" by response time. Computed once at startup.
-var decoySecretHash, _ = HashSecret("decoy-secret-for-constant-time-login")
+// loginDecoySecret is hashed once per server (New, at the configured secret cost)
+// into s.decoySecretHash: verifying a presented secret against it on a login for
+// an unknown account does the same bcrypt work as a real check, so a caller cannot
+// distinguish "no such account" from "wrong secret" by response time.
+const loginDecoySecret = "decoy-secret-for-constant-time-login"
 
 // handleHealth serves GET /api/healthz (openapi.yaml: getHealth). It is a
 // liveness probe: it reports the running application version and does not touch
@@ -80,7 +80,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		// Unknown email: do equivalent work against a decoy so timing cannot be
 		// used to enumerate accounts, then deny.
-		_ = VerifySecret(decoySecretHash, req.Secret)
+		_ = VerifySecret(s.decoySecretHash, req.Secret)
 		writeError(w, r, http.StatusUnauthorized, codeUnauthorized, "invalid email or secret")
 		return
 	}

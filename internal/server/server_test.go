@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mdhender/ecv6-api/internal/api"
+	"github.com/mdhender/ecv6-api/internal/secret"
 	"github.com/mdhender/ecv6-api/internal/store"
 )
 
@@ -28,7 +29,22 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("OpenTemporary: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return New(Config{Addr: ":0"}, db, nil, "9.9.9-test")
+	// MinCost keeps bcrypt hashing fast across the suite; production defaults to
+	// secret.DefaultCost via New.
+	return New(Config{Addr: ":0", SecretCost: secret.MinCost}, db, nil, "9.9.9-test")
+}
+
+// TestNewDefaultsSecretCost confirms a zero SecretCost resolves to the secure
+// production default, and that the decoy hash is computed at that same cost so
+// unknown-account login timing matches a real check.
+func TestNewDefaultsSecretCost(t *testing.T) {
+	s := New(Config{Addr: ":0"}, nil, nil, "test")
+	if s.secretCost != secret.DefaultCost {
+		t.Errorf("secretCost = %d, want DefaultCost %d", s.secretCost, secret.DefaultCost)
+	}
+	if !secret.Verify(s.decoySecretHash, loginDecoySecret) {
+		t.Errorf("decoy hash was not computed for the resolved cost")
+	}
 }
 
 func TestHealth(t *testing.T) {

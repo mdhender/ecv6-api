@@ -146,15 +146,16 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 	// env-var binding fills it during Parse), so we check for emptiness in Exec
 	// rather than marking the flag required, which would only see the command line.
 	adminSecret := adminCreateFlags.StringLong("secret", "", "account secret (or set ECDB_SECRET); required")
+	adminSecretCost := adminCreateFlags.IntLong("secret-cost", secret.DefaultCost, "bcrypt cost (rounds) used to hash the secret")
 	adminEmail := adminCreateFlags.StringLong("email", "admin@ecv6.example.com", "account email (coerced to lowercase)")
 	adminDisplayName := adminCreateFlags.StringLong("display-name", "admin", "account display name")
 	adminCreateCmd := &ff.Command{
 		Name:      "create",
-		Usage:     "ecdb admin create --secret SECRET [--email EMAIL] [--display-name NAME] PATH",
+		Usage:     "ecdb admin create --secret SECRET [--secret-cost N] [--email EMAIL] [--display-name NAME] PATH",
 		ShortHelp: "create an admin account in the database in folder PATH",
 		Flags:     adminCreateFlags,
 		Exec: func(ctx context.Context, args []string) error {
-			return cmdAdminCreate(ctx, log, args, *adminSecret, *adminEmail, *adminDisplayName)
+			return cmdAdminCreate(ctx, log, args, *adminSecret, *adminSecretCost, *adminEmail, *adminDisplayName)
 		},
 	}
 
@@ -225,9 +226,10 @@ func cmdCreate(ctx context.Context, log *slog.Logger, args []string, overwrite b
 // cmdAdminCreate creates an active admin account in the database in folder
 // args[0]. The database must already exist (ecdb create's job); admin create
 // never creates one. The secret is required and may be supplied via --secret or
-// the ECDB_SECRET environment variable; the email is coerced to lowercase (by
-// store.CreateAccount) so identities stay canonical.
-func cmdAdminCreate(ctx context.Context, log *slog.Logger, args []string, secretValue, email, displayName string) error {
+// the ECDB_SECRET environment variable; secretCost is the bcrypt cost used to
+// hash it. The email is coerced to lowercase (by store.CreateAccount) so
+// identities stay canonical.
+func cmdAdminCreate(ctx context.Context, log *slog.Logger, args []string, secretValue string, secretCost int, email, displayName string) error {
 	folder, err := requirePath("admin create", args)
 	if err != nil {
 		return err
@@ -236,7 +238,7 @@ func cmdAdminCreate(ctx context.Context, log *slog.Logger, args []string, secret
 		return fmt.Errorf("admin create: a secret is required (pass --secret or set ECDB_SECRET)")
 	}
 
-	hashed, err := secret.Hash(secretValue)
+	hashed, err := secret.Hash(secretValue, secretCost)
 	if err != nil {
 		return fmt.Errorf("admin create: hash secret: %w", err)
 	}

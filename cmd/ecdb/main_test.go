@@ -5,8 +5,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +33,7 @@ func TestAdminCreate(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	dir := newTestDB(t)
 
-	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", "admin@ecv6.example.com", "admin"); err != nil {
+	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", secret.MinCost, "admin@ecv6.example.com", "admin"); err != nil {
 		t.Fatalf("cmdAdminCreate: %v", err)
 	}
 
@@ -69,7 +71,7 @@ func TestAdminCreateDefaults(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	dir := newTestDB(t)
 
-	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", "admin@ecv6.example.com", "admin"); err != nil {
+	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", secret.MinCost, "admin@ecv6.example.com", "admin"); err != nil {
 		t.Fatalf("cmdAdminCreate: %v", err)
 	}
 	db, err := store.OpenPersistent(ctx, log, dir)
@@ -88,7 +90,7 @@ func TestAdminCreateLowercasesEmail(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	dir := newTestDB(t)
 
-	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", "Admin@EC.Example.COM", "Boss"); err != nil {
+	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", secret.MinCost, "Admin@EC.Example.COM", "Boss"); err != nil {
 		t.Fatalf("cmdAdminCreate: %v", err)
 	}
 	db, err := store.OpenPersistent(ctx, log, dir)
@@ -112,7 +114,7 @@ func TestAdminCreateSecretRequired(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	dir := newTestDB(t)
 
-	err := cmdAdminCreate(ctx, log, []string{dir}, "", "admin@ecv6.example.com", "admin")
+	err := cmdAdminCreate(ctx, log, []string{dir}, "", secret.MinCost, "admin@ecv6.example.com", "admin")
 	if err == nil {
 		t.Fatal("cmdAdminCreate accepted an empty secret")
 	}
@@ -144,6 +146,36 @@ func TestAdminCreateEnvSecret(t *testing.T) {
 	}
 }
 
+// TestAdminCreateSecretCost confirms --secret-cost sets the bcrypt cost stored in
+// the hash, exercising the flag through the full parse. bcrypt encodes the cost
+// as a two-digit field in the "$2a$NN$" prefix.
+func TestAdminCreateSecretCost(t *testing.T) {
+	ctx := context.Background()
+	dir := newTestDB(t)
+
+	cmd, _ := newRootCommand()
+	args := []string{"admin", "create", "--secret", "s3cret", "--secret-cost", "6", dir}
+	if code := cli.Run(ctx, cmd, "ECDB", args, nil); code != 0 {
+		t.Fatalf("cli.Run exit code = %d, want 0", code)
+	}
+
+	db, err := store.OpenPersistent(ctx, slog.New(slog.DiscardHandler), dir)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+	a, err := db.GetAccountByEmail(ctx, "admin@ecv6.example.com")
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	if want := fmt.Sprintf("$2a$%02d$", 6); !strings.HasPrefix(a.HashedSecret, want) {
+		t.Errorf("stored hash %q does not carry cost 6 (want prefix %q)", a.HashedSecret, want)
+	}
+	if !secret.Verify(a.HashedSecret, "s3cret") {
+		t.Errorf("stored hash does not verify")
+	}
+}
+
 // TestAdminCreateDuplicateEmail confirms a second account with the same email is
 // rejected as a conflict.
 func TestAdminCreateDuplicateEmail(t *testing.T) {
@@ -151,10 +183,10 @@ func TestAdminCreateDuplicateEmail(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	dir := newTestDB(t)
 
-	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", "admin@ecv6.example.com", "admin"); err != nil {
+	if err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", secret.MinCost, "admin@ecv6.example.com", "admin"); err != nil {
 		t.Fatalf("first cmdAdminCreate: %v", err)
 	}
-	err := cmdAdminCreate(ctx, log, []string{dir}, "another", "admin@ecv6.example.com", "admin")
+	err := cmdAdminCreate(ctx, log, []string{dir}, "another", secret.MinCost, "admin@ecv6.example.com", "admin")
 	if !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("duplicate email error = %v, want ErrConflict", err)
 	}
@@ -167,7 +199,7 @@ func TestAdminCreateMissingDatabase(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	dir := t.TempDir() // no ec.db created
 
-	err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", "admin@ecv6.example.com", "admin")
+	err := cmdAdminCreate(ctx, log, []string{dir}, "s3cret", secret.MinCost, "admin@ecv6.example.com", "admin")
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing database error = %v, want ErrNotFound", err)
 	}
@@ -177,10 +209,10 @@ func TestAdminCreateMissingDatabase(t *testing.T) {
 func TestAdminCreateArgCount(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.DiscardHandler)
-	if err := cmdAdminCreate(ctx, log, nil, "s3cret", "admin@ecv6.example.com", "admin"); err == nil {
+	if err := cmdAdminCreate(ctx, log, nil, "s3cret", secret.MinCost, "admin@ecv6.example.com", "admin"); err == nil {
 		t.Error("cmdAdminCreate accepted zero PATH arguments")
 	}
-	if err := cmdAdminCreate(ctx, log, []string{"a", "b"}, "s3cret", "admin@ecv6.example.com", "admin"); err == nil {
+	if err := cmdAdminCreate(ctx, log, []string{"a", "b"}, "s3cret", secret.MinCost, "admin@ecv6.example.com", "admin"); err == nil {
 		t.Error("cmdAdminCreate accepted two PATH arguments")
 	}
 }

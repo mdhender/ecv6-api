@@ -20,9 +20,9 @@ import (
 // id, hashing the secret exactly as the login path expects.
 func seedAccount(t *testing.T, s *Server, email, secret string, admin, active bool) int64 {
 	t.Helper()
-	hashed, err := HashSecret(secret)
+	hashed, err := s.hashSecret(secret)
 	if err != nil {
-		t.Fatalf("HashSecret: %v", err)
+		t.Fatalf("hashSecret: %v", err)
 	}
 	id, err := s.db.CreateAccount(context.Background(), store.Account{
 		Email:        email,

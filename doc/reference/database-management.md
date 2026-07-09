@@ -130,7 +130,7 @@ Exits `0` if the database exists and its version equals the expected version;
 exits `1` otherwise (missing database, version mismatch, or not an EC database).
 Read-only. Intended as a scriptable guard.
 
-### `ecdb admin create --secret SECRET [--email EMAIL] [--display-name NAME] PATH`
+### `ecdb admin create --secret SECRET [--secret-cost N] [--email EMAIL] [--display-name NAME] PATH`
 
 Creates an active administrator account (`is_admin = true`, `is_active = true`) in
 `PATH/ec.db`. This is how the first administrator is seeded: `ecdb` writes directly
@@ -145,6 +145,10 @@ bootstrap. Prints `created admin account <id> (<email>)` to standard error.
   `ECDB_` env prefix); an explicit `--secret` flag wins over the environment. If
   neither is set, the command is a usage error and exits non-zero. The secret is
   stored only as a bcrypt hash, never in plaintext.
+- **`--secret-cost`** sets the bcrypt cost (rounds) used to hash the secret. It
+  defaults to bcrypt's recommended cost (`10`); lower it only for throwaway test
+  fixtures where speed matters more than strength. A cost above bcrypt's maximum
+  (`31`) is an error.
 - **`--email`** defaults to `admin@ecv6.example.com` and is **coerced to lowercase**
   before storage, so account identities stay canonical.
 - **`--display-name`** defaults to `admin`.

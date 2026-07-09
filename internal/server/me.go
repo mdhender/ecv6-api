@@ -111,7 +111,7 @@ func (s *Server) handleUpdateMySecret(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, codeBadRequest, "newSecret must be at least 8 characters")
 		return
 	}
-	hashed, err := HashSecret(req.NewSecret)
+	hashed, err := s.hashSecret(req.NewSecret)
 	if err != nil {
 		logger(r).ErrorContext(r.Context(), "me: hash secret", "err", err)
 		writeError(w, r, http.StatusInternalServerError, codeInternal, "could not update secret")
