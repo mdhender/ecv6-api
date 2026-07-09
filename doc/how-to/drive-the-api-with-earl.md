@@ -12,6 +12,14 @@ running (see
 Build the client with `go build -o earl ./cmd/earl`, or run it in place with
 `go run ./cmd/earl`.
 
+> **Quick start with no database.** To try earl against a throwaway server
+> without creating anything on disk, run
+> [`ec serve --memory`](create-and-verify-a-database.md#serve-a-throwaway-in-memory-database).
+> It stands up a fresh in-memory database and auto-seeds a well-known admin —
+> email `admin@ecv6.example.com`, secret `password` — so you can log in
+> immediately. Set `EARL_EMAIL=admin@ecv6.example.com` and `EARL_SECRET=password`
+> below.
+
 ## Point earl at the server
 
 earl reads the same `EARL_`-prefixed variables from your `.env` files that the

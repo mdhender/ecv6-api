@@ -4,6 +4,12 @@
 // migrations automatically whenever it opens the database, but must never
 // create a new persistent database — if the persistent file is missing it
 // fails rather than creating one.
+//
+// For a throwaway dev or smoke-test server, "ec serve --memory" (env EC_MEMORY)
+// serves a fresh, migrated, in-memory database that never touches disk and
+// auto-seeds a well-known admin (MemoryAdminEmail / MemoryAdminSecret), logged at
+// startup, so it is immediately usable. --memory and --data are mutually
+// exclusive, and a persistent database is never auto-seeded.
 package main
 
 import (
@@ -43,6 +49,7 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 	dataDir := serveFlags.StringLong("data", "", "folder holding the database (ec.db); or set EC_DATA")
 	listen := serveFlags.StringLong("listen", ":8080", "TCP address the server listens on")
 	dev := serveFlags.BoolLong("dev", "enable development-only affordances")
+	memory := serveFlags.BoolLong("memory", "serve a throwaway in-memory database seeded with a well-known admin (testing only; never touches disk; mutually exclusive with --data); or set EC_MEMORY")
 	secretCost := serveFlags.IntLong("secret-cost", secret.DefaultCost, "bcrypt cost (rounds) for hashing account secrets; or set EC_SECRET_COST")
 	serveCmd := &ff.Command{
 		Name:      "serve",
@@ -50,7 +57,7 @@ func newRootCommand() (*ff.Command, *cli.Logging) {
 		ShortHelp: "open the existing database and run the API server",
 		Flags:     serveFlags,
 		Exec: func(ctx context.Context, _ []string) error {
-			return cmdServe(ctx, log, *dataDir, *listen, *dev, *secretCost)
+			return cmdServe(ctx, log, *dataDir, *listen, *dev, *memory, *secretCost)
 		},
 	}
 	rootCmd.Subcommands = append(rootCmd.Subcommands, serveCmd)

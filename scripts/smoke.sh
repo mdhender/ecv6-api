@@ -2,18 +2,17 @@
 #
 # smoke.sh — end-to-end smoke test of the EC API driven by the earl client.
 #
-# It is hermetic: it builds the binaries, seeds a fresh database in a temp folder,
-# starts a throwaway server on its own port, drives the application surface with
-# earl, and tears everything down. It touches none of your real data — not
-# games/alpha, not games/claude, not ~/.config/earl.
+# It is hermetic: it builds the binaries, starts a throwaway in-memory server on
+# its own port (ec serve --memory, which auto-seeds a well-known admin and never
+# touches disk), drives the application surface with earl, and tears everything
+# down. It touches none of your real data — not games/alpha, not games/claude,
+# not ~/.config/earl.
 #
 # Usage:
 #   scripts/smoke.sh
 #
 # Overrides (environment variables):
 #   PORT           listen port (default: a free ephemeral port, else 8099)
-#   SMOKE_EMAIL    admin email to seed and log in as (default: penny@example.com)
-#   SMOKE_SECRET   admin secret (default: happy.cat.happy.nap)
 #
 # Exit status is the number of failed checks (0 = all passed).
 
@@ -23,14 +22,15 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
 PORT="${PORT:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()' 2>/dev/null || echo 8099)}"
-ADMIN_EMAIL="${SMOKE_EMAIL:-penny@example.com}"
-ADMIN_SECRET="${SMOKE_SECRET:-happy.cat.happy.nap}"
+
+# The well-known admin ec serve --memory auto-seeds (see cmd/ec/serve.go).
+ADMIN_EMAIL="admin@ecv6.example.com"
+ADMIN_SECRET="password"
 
 WORK=$(mktemp -d)
 BIN="$WORK/bin"
-DATA="$WORK/data"
 export XDG_CONFIG_HOME="$WORK/config" # isolate earl's tokens.json from ~/.config
-mkdir -p "$BIN" "$DATA" "$XDG_CONFIG_HOME"
+mkdir -p "$BIN" "$XDG_CONFIG_HOME"
 
 SERVER_PID=""
 cleanup() {
@@ -39,19 +39,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "building ec, ecdb, earl ..."
+echo "building ec, earl ..."
 go build -o "$BIN/ec" ./cmd/ec
-go build -o "$BIN/ecdb" ./cmd/ecdb
 go build -o "$BIN/earl" ./cmd/earl
 
-# --secret-cost 4 keeps bcrypt fast; this is a disposable test database.
-echo "seeding database + admin ($ADMIN_EMAIL) ..."
-"$BIN/ecdb" create "$DATA" >/dev/null
-"$BIN/ecdb" --logging-level=error admin create \
-	--secret "$ADMIN_SECRET" --secret-cost 4 --email "$ADMIN_EMAIL" "$DATA" >/dev/null
+# Blank EC_DATA so a repo .env* pointing at a real database does not collide with
+# --memory (the two are mutually exclusive); godotenv won't override an already-set
+# variable, so exporting it empty here wins.
+export EC_DATA=""
 
-echo "starting server on :$PORT ..."
-"$BIN/ec" serve --data "$DATA" --listen ":$PORT" --dev --secret-cost 4 >"$WORK/ec.log" 2>&1 &
+# --memory serves a fresh migrated in-memory database seeded with the well-known
+# admin; no ecdb, no on-disk database. --secret-cost 4 keeps bcrypt fast.
+echo "starting in-memory server on :$PORT ..."
+"$BIN/ec" serve --memory --listen ":$PORT" --dev --secret-cost 4 >"$WORK/ec.log" 2>&1 &
 SERVER_PID=$!
 
 base="http://localhost:$PORT/api"
@@ -98,11 +98,11 @@ deny() {
 	else pass=$((pass + 1)); fi
 }
 
-# A fresh database numbers penny=account 1, tester=account 2, and the first game
-# and member from 1, which the paths below rely on.
+# A fresh in-memory database numbers the seeded admin=account 1, tester=account 2,
+# and the first game and member from 1, which the paths below rely on.
 ok "public health check" "$earl" get /healthz
 ok "public version" "$earl" get /version
-ok "login as admin" "$earl" login
+ok "login as well-known admin" "$earl" login
 ok "whoami" "$earl" whoami
 ok "create a user (tester)" "$earl" post /accounts -d '{"email":"tester@example.com","secret":"hunter2hunter2","isActive":true,"isAdmin":false}'
 ok "list accounts" "$earl" get /accounts
