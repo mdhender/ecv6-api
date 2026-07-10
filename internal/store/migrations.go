@@ -11,6 +11,7 @@ package store
 // into a new baseline is allowed.
 var migrations = []string{
 	migration0001,
+	migration0002,
 }
 
 // migration0001 lays down the application-domain tables: accounts, sessions,
@@ -69,4 +70,22 @@ CREATE TABLE game_account_role (
     is_active  INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (game_id, player_id),
     UNIQUE (game_id, account_id)                  -- an account holds at most one seat per game
+)`
+
+// migration0002 lays down the first game-engine table: per-game engine state,
+// kept separate from the application-domain games row so the two domains stay
+// separate (ADR-0013). One row per game.
+//
+//   - seed1/seed2 are the game's two uint64 master seeds — the root of all
+//     determinism (doc/determinism.md, internal/prng). SQLite has no unsigned
+//     type, so the uint64 bit pattern is stored in an INTEGER and reinterpreted
+//     on read; the sign is meaningless.
+//   - current_turn is the engine's clock: turn 0 is setup, play starts at 1
+//     (doc/storing-state-as-timebound-facts.md).
+const migration0002 = `
+CREATE TABLE game_engine_state (
+    game_id      INTEGER NOT NULL PRIMARY KEY REFERENCES games (id),
+    seed1        INTEGER NOT NULL,                 -- uint64 master seed (bit pattern; ADR-0013)
+    seed2        INTEGER NOT NULL,                 -- uint64 master seed (bit pattern)
+    current_turn INTEGER NOT NULL DEFAULT 0        -- turn 0 = setup; play starts at 1
 )`
