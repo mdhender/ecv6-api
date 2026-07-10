@@ -15,6 +15,7 @@
 /ec
 /ecdb
 /earl
+/shared-cluster-simulation
 
 # Environment files (see internal/dotenv). The *.local files may hold secrets, so
 # they are explicity ignored; shared .env and .env.<env> files are committed.
