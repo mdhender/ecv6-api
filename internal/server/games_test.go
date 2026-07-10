@@ -67,8 +67,8 @@ func TestCreateGameAdminOnly(t *testing.T) {
 	if got.Game.Id == 0 {
 		t.Errorf("created game missing id")
 	}
-	if got.Game.Name != "Alpha Campaign" {
-		t.Errorf("name = %q, want Alpha Campaign", got.Game.Name)
+	if got.Game.Name != "ALPHA CAMPAIGN" {
+		t.Errorf("name = %q, want ALPHA CAMPAIGN (stored upper-cased)", got.Game.Name)
 	}
 	if got.Game.Status != api.Draft {
 		t.Errorf("status = %q, want draft", got.Game.Status)
@@ -89,6 +89,23 @@ func TestCreateGameValidation(t *testing.T) {
 	}
 }
 
+// TestCreateGameDuplicateName covers issue #72: names are unique across all
+// games and matched case-insensitively (stored upper-cased), so a second create
+// with the same name — in any case — is 409.
+func TestCreateGameDuplicateName(t *testing.T) {
+	s := newTestServer(t)
+	seedAccount(t, s, "admin@example.com", "admin-pass-1", true, true)
+	adminTok := tokenFor(t, s, "admin@example.com", "admin-pass-1")
+
+	if rec := do(t, s, http.MethodPost, "/api/games", adminTok, api.CreateGameRequest{Name: "ec01"}); rec.Code != http.StatusCreated {
+		t.Fatalf("first create: status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	// Same name, different case — collides after upper-casing.
+	if rec := do(t, s, http.MethodPost, "/api/games", adminTok, api.CreateGameRequest{Name: "EC01"}); rec.Code != http.StatusConflict {
+		t.Errorf("duplicate name: status = %d, want 409; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestListGamesVisibility(t *testing.T) {
 	s := newTestServer(t)
 	seedAccount(t, s, "user@example.com", "user-pass-1", false, true)
@@ -104,8 +121,8 @@ func TestListGamesVisibility(t *testing.T) {
 	}
 	var userGot api.ListGamesResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &userGot)
-	if len(userGot.Games) != 1 || userGot.Games[0].Name != "Visible" {
-		t.Errorf("non-admin games = %+v, want only [Visible]", userGot.Games)
+	if len(userGot.Games) != 1 || userGot.Games[0].Name != "VISIBLE" {
+		t.Errorf("non-admin games = %+v, want only [VISIBLE]", userGot.Games)
 	}
 
 	// Admin sees both.
@@ -121,8 +138,8 @@ func TestListGamesVisibility(t *testing.T) {
 	rec = do(t, s, http.MethodGet, "/api/games?status=draft", adminTok, nil)
 	var filtered api.ListGamesResponse
 	_ = json.Unmarshal(rec.Body.Bytes(), &filtered)
-	if len(filtered.Games) != 1 || filtered.Games[0].Name != "Hidden" {
-		t.Errorf("status=draft games = %+v, want only [Hidden]", filtered.Games)
+	if len(filtered.Games) != 1 || filtered.Games[0].Name != "HIDDEN" {
+		t.Errorf("status=draft games = %+v, want only [HIDDEN]", filtered.Games)
 	}
 
 	// An invalid status filter is 400.
@@ -189,8 +206,8 @@ func TestUpdateGameByAdmin(t *testing.T) {
 	if got.Game.Status != api.Active {
 		t.Errorf("status = %q, want active", got.Game.Status)
 	}
-	if got.Game.Name != "Alpha Renamed" {
-		t.Errorf("name = %q, want Alpha Renamed", got.Game.Name)
+	if got.Game.Name != "ALPHA RENAMED" {
+		t.Errorf("name = %q, want ALPHA RENAMED (stored upper-cased)", got.Game.Name)
 	}
 	if !got.Game.IsActive {
 		t.Errorf("isActive = false, want true")
@@ -299,8 +316,8 @@ func TestListMyGames(t *testing.T) {
 		t.Fatalf("my games = %d, want 1", len(got.Games))
 	}
 	mg := got.Games[0]
-	if mg.Id != game || mg.Name != "My Game" || mg.PlayerId != seat.PlayerID || !mg.IsGm {
-		t.Errorf("my game = %+v, want {id:%d name:My Game playerId:%d isGm:true}", mg, game, seat.PlayerID)
+	if mg.Id != game || mg.Name != "MY GAME" || mg.PlayerId != seat.PlayerID || !mg.IsGm {
+		t.Errorf("my game = %+v, want {id:%d name:MY GAME playerId:%d isGm:true}", mg, game, seat.PlayerID)
 	}
 
 	// Unauthenticated is 401.

@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
@@ -12,7 +13,9 @@ import (
 
 // CreateGame inserts a new game and returns its assigned id. An empty Status
 // defaults to "draft"; an unrecognized status is rejected by the CHECK
-// constraint and surfaces as ErrConflict.
+// constraint and surfaces as ErrConflict. The name is stored upper-cased and
+// must be unique across all games; a duplicate also surfaces as ErrConflict
+// (issue #72).
 func (db *DB) CreateGame(ctx context.Context, g Game) (int64, error) {
 	conn, err := db.Get(ctx)
 	if err != nil {
@@ -27,7 +30,7 @@ func (db *DB) CreateGame(ctx context.Context, g Game) (int64, error) {
 	err = sqlitex.Execute(conn, `
 		INSERT INTO games (name, status, description, is_active)
 		VALUES (?, ?, ?, ?)`, &sqlitex.ExecOptions{
-		Args: []any{g.Name, status, g.Description, g.IsActive},
+		Args: []any{strings.ToUpper(g.Name), status, g.Description, g.IsActive},
 	})
 	if err != nil {
 		if isConstraint(err) {
@@ -82,9 +85,11 @@ func scanGame(stmt *sqlite.Stmt) Game {
 }
 
 // UpdateGame writes the mutable fields (name, status, description, active) of the
-// game identified by g.ID. An unrecognized status surfaces as ErrConflict; an
-// unknown id returns ErrRecordNotFound. It does not police lifecycle transitions
-// (forward-only status rules) — that policy belongs to the game handlers.
+// game identified by g.ID. The name is stored upper-cased and must stay unique
+// across all games; a duplicate — like an unrecognized status — surfaces as
+// ErrConflict. An unknown id returns ErrRecordNotFound. It does not police
+// lifecycle transitions (forward-only status rules) — that policy belongs to the
+// game handlers.
 func (db *DB) UpdateGame(ctx context.Context, g Game) error {
 	conn, err := db.Get(ctx)
 	if err != nil {
@@ -96,7 +101,7 @@ func (db *DB) UpdateGame(ctx context.Context, g Game) error {
 		UPDATE games
 		SET name = ?, status = ?, description = ?, is_active = ?
 		WHERE id = ?`, &sqlitex.ExecOptions{
-		Args: []any{g.Name, g.Status, g.Description, g.IsActive, g.ID},
+		Args: []any{strings.ToUpper(g.Name), g.Status, g.Description, g.IsActive, g.ID},
 	})
 	if err != nil {
 		if isConstraint(err) {

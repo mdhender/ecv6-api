@@ -105,14 +105,15 @@ func (s *Server) handleListGames(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCreateGame serves POST /api/games (openapi.yaml: createGame). Admin only
-// (enforced by the group's requireAdmin). name is required; the new game starts in
-// draft, inactive-until-set, with the given description.
+// (enforced by the group's requireAdmin). name is required, upper-cased, and must
+// be unique across all games (issue #72); the new game starts in draft,
+// inactive-until-set, with the given description.
 func (s *Server) handleCreateGame(w http.ResponseWriter, r *http.Request) {
 	var req api.CreateGameRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	name := strings.TrimSpace(req.Name)
+	name := strings.ToUpper(strings.TrimSpace(req.Name))
 	if name == "" {
 		writeError(w, r, http.StatusBadRequest, codeBadRequest, "name is required")
 		return
@@ -126,7 +127,7 @@ func (s *Server) handleCreateGame(w http.ResponseWriter, r *http.Request) {
 	id, err := s.db.CreateGame(r.Context(), g)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			writeError(w, r, http.StatusConflict, codeConflict, "could not create game")
+			writeError(w, r, http.StatusConflict, codeConflict, "a game with that name already exists")
 			return
 		}
 		logger(r).ErrorContext(r.Context(), "games: create", "err", err)
@@ -174,6 +175,7 @@ func (s *Server) handleGetGame(w http.ResponseWriter, r *http.Request) {
 //     backward moves are 409 except paused → active and moving out of archived,
 //     which are admin-only.
 //   - name / description: an active GM or an admin, and rejected once archived.
+//     name is upper-cased and must stay unique across all games (409 otherwise).
 //   - isActive: admin only, and frozen while archived.
 //
 // A caller who is neither an admin nor the game's active GM may change nothing
@@ -261,7 +263,7 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.Name != nil {
-			g.Name = strings.TrimSpace(*req.Name)
+			g.Name = strings.ToUpper(strings.TrimSpace(*req.Name))
 		}
 		if req.Description != nil {
 			g.Description = *req.Description
@@ -299,7 +301,7 @@ func (s *Server) handleUpdateGame(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.UpdateGame(r.Context(), g); err != nil {
 		switch {
 		case errors.Is(err, store.ErrConflict):
-			writeError(w, r, http.StatusConflict, codeConflict, "could not update game")
+			writeError(w, r, http.StatusConflict, codeConflict, "a game with that name already exists")
 		case errors.Is(err, store.ErrRecordNotFound):
 			writeError(w, r, http.StatusNotFound, codeNotFound, "game not found")
 		default:
