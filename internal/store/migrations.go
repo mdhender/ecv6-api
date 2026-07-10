@@ -12,6 +12,7 @@ package store
 var migrations = []string{
 	migration0001,
 	migration0002,
+	migration0003,
 }
 
 // migration0001 lays down the application-domain tables: accounts, sessions,
@@ -89,3 +90,11 @@ CREATE TABLE game_engine_state (
     seed2        INTEGER NOT NULL,                 -- uint64 master seed (bit pattern)
     current_turn INTEGER NOT NULL DEFAULT 0        -- turn 0 = setup; play starts at 1
 )`
+
+// migration0003 makes a game's name distinct across ALL games — active or
+// inactive (issue #72). Names are stored upper-cased by the create/update paths
+// (as accounts lowercase email), so a plain case-sensitive unique index enforces
+// the rule; "ec01" and "EC01" normalize to the same stored value and collide.
+// A duplicate INSERT/UPDATE surfaces as ErrConflict (see isConstraint).
+const migration0003 = `
+CREATE UNIQUE INDEX games_name_unique ON games (name)`

@@ -262,7 +262,8 @@ func TestGameCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetGame: %v", err)
 	}
-	if g.Status != "draft" || g.Name != "Alpha Campaign" || g.Description != "first" || !g.IsActive {
+	// Names are stored upper-cased (issue #72).
+	if g.Status != "draft" || g.Name != "ALPHA CAMPAIGN" || g.Description != "first" || !g.IsActive {
 		t.Errorf("game = %+v", g)
 	}
 
@@ -272,7 +273,7 @@ func TestGameCRUD(t *testing.T) {
 		t.Fatalf("UpdateGame: %v", err)
 	}
 	after, _ := db.GetGame(ctx, id)
-	if after.Status != "recruiting" || after.IsActive || after.Name != "Alpha" {
+	if after.Status != "recruiting" || after.IsActive || after.Name != "ALPHA" {
 		t.Errorf("after update: %+v", after)
 	}
 
@@ -290,8 +291,36 @@ func TestGameCRUD(t *testing.T) {
 		t.Errorf("ListGames(all) = %d, want 2", len(all))
 	}
 	activeOnly, _ := db.ListGames(ctx, "active")
-	if len(activeOnly) != 1 || activeOnly[0].Name != "Beta" {
+	if len(activeOnly) != 1 || activeOnly[0].Name != "BETA" {
 		t.Errorf("ListGames(active) = %+v", activeOnly)
+	}
+}
+
+// TestGameNameUnique covers issue #72: a game name is unique across all games
+// (active or not) and normalized to upper-case, so a duplicate create or rename
+// — in any case — is ErrConflict.
+func TestGameNameUnique(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	if _, err := db.CreateGame(ctx, Game{Name: "ec01"}); err != nil {
+		t.Fatalf("CreateGame ec01: %v", err)
+	}
+	// Different case, and inactive — still collides after normalization.
+	if _, err := db.CreateGame(ctx, Game{Name: "EC01", IsActive: false}); !errors.Is(err, ErrConflict) {
+		t.Errorf("duplicate create error = %v, want ErrConflict", err)
+	}
+
+	// Renaming a distinct game onto an existing name also collides.
+	other, err := db.CreateGame(ctx, Game{Name: "ec02"})
+	if err != nil {
+		t.Fatalf("CreateGame ec02: %v", err)
+	}
+	g, _ := db.GetGame(ctx, other)
+	g.Name = "Ec01"
+	if err := db.UpdateGame(ctx, g); !errors.Is(err, ErrConflict) {
+		t.Errorf("duplicate rename error = %v, want ErrConflict", err)
 	}
 }
 
@@ -423,7 +452,7 @@ func TestListMembersAndMyGames(t *testing.T) {
 	if len(mine) != 1 {
 		t.Fatalf("my games = %d, want 1 (dropped g2 seat excluded)", len(mine))
 	}
-	if mine[0].GameID != g1 || mine[0].Name != "One" || !mine[0].IsGM {
+	if mine[0].GameID != g1 || mine[0].Name != "ONE" || !mine[0].IsGM {
 		t.Errorf("my game = %+v", mine[0])
 	}
 }

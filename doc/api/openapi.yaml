@@ -532,7 +532,10 @@ paths:
       tags: [Games]
       operationId: createGame
       summary: Create a game
-      description: Admin only. A new game starts in `draft`.
+      description: >-
+        Admin only. A new game starts in `draft`. `name` is coerced to
+        upper-case and must be unique across all games (active or not);
+        a duplicate is rejected with `409`.
       requestBody:
         required: true
         content:
@@ -1096,6 +1099,8 @@ components:
           format: int64
         name:
           type: string
+          description: >-
+            Stored upper-cased and unique across all games (active or not).
         status:
           $ref: '#/components/schemas/GameStatus'
         description:
@@ -1124,6 +1129,9 @@ components:
         name:
           type: string
           minLength: 1
+          description: >-
+            Coerced to upper-case and must be unique across all games (active or
+            not); a duplicate is rejected with 409.
         description:
           type: string
     UpdateGameRequest:
@@ -1139,6 +1147,9 @@ components:
         name:
           type: string
           minLength: 1
+          description: >-
+            Coerced to upper-case and must stay unique across all games (active
+            or not); a duplicate is rejected with 409.
         description:
           type: string
         isActive:
