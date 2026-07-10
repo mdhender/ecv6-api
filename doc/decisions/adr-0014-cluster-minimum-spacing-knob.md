@@ -15,9 +15,11 @@ the **minimum system spacing**.
 
 `cluster.md`'s *From the settings to a map* prose listed *both* radius and minimum
 spacing among the things "the number of systems and stellar density" determine — i.e. it
-framed minimum spacing as **derived from density**. Modeling the generator (see the
-`clustergen` simulation and the design brief) surfaced a question that framing hid: what,
-mechanically, is the minimum-spacing threshold *for*?
+framed minimum spacing as **derived from density**, and the glossary encoded the same
+framing (its `Minimum system spacing` entry read "Set by the stellar density during
+generation," and `Stellar density` read "It sets the minimum system spacing"). Modeling
+the generator (see the `clustergen` simulation and the design brief) surfaced a question
+that framing hid: what, mechanically, is the minimum-spacing threshold *for*?
 
 The design intent for a spacing control is to **force players to invest in engine / jump
 technology** by forcing systems apart. Measuring the per-system nearest-neighbor
@@ -65,10 +67,12 @@ density.**
   choosing a sparser density. This reuses the fail-if-exhausted behavior the rulebook
   already specifies.
 
-The rulebook (`cluster.md`) is updated to add `Minimum spacing` to the *Settings* table
-and to source radius (derived) and spacing (GM input) differently in *From the settings
-to a map*. This ADR records the decision and rationale; the rule itself lives in the
-docs (docs-first, CLAUDE.md rule 3).
+The rulebook is updated to match: `cluster.md` adds `Minimum spacing` to the *Settings*
+table and sources radius (derived) and spacing (GM input) differently in *From the
+settings to a map*, and the **glossary** entries that stated the old derivation
+(`Minimum system spacing`, `Stellar density`) are corrected. This ADR records the
+decision and rationale; the rules themselves live in the docs (docs-first, CLAUDE.md
+rule 3).
 
 ## Consequences
 
