@@ -1,0 +1,64 @@
+# ADR-0013: Engine game-state lives in a separate table
+
+- **Status:** accepted
+- **Date:** 2026-07-09
+
+## Context
+
+Phase E0 (the determinism foundation, issue #66) needs to persist per-game
+engine state: the two `uint64` master seeds (`seed1`, `seed2`) that root all
+randomness (see [../determinism.md](../determinism.md) and the `internal/prng`
+package) and the engine clock `current_turn` (turn 0 is setup; play starts at 1).
+
+The `games` table (migration0001) is an **application-domain** row: name, status,
+description, `is_active`. A load-bearing invariant is that the two domains stay
+separate — the engine is unaware of the application side, and the boundary is a
+small set of ids ([../control-and-ownership.md](../control-and-ownership.md)).
+
+Two placements were on the table:
+
+- **Extend `games`** with `seed1`, `seed2`, `current_turn` columns. Fewer joins,
+  one row per game either way.
+- **A separate engine-state table** keyed by `game_id`.
+
+## Decision
+
+**Engine state lives in a separate table, `game_engine_state`, keyed by
+`game_id`** (one row per game, `PRIMARY KEY REFERENCES games (id)`). The `games`
+row stays application-only.
+
+```sql
+CREATE TABLE game_engine_state (
+    game_id      INTEGER NOT NULL PRIMARY KEY REFERENCES games (id),
+    seed1        INTEGER NOT NULL,                 -- uint64 master seed (bit pattern)
+    seed2        INTEGER NOT NULL,                 -- uint64 master seed (bit pattern)
+    current_turn INTEGER NOT NULL DEFAULT 0        -- turn 0 = setup; play starts at 1
+)
+```
+
+SQLite has no unsigned integer type, so each `uint64` seed is stored as its
+**bit pattern** in an `INTEGER` (a signed `int64` on disk) and reinterpreted as
+`uint64` on read; the sign is meaningless. This is a storage detail, not part of
+the determinism frozen surface — the frozen surface is how seeds and a key path
+are *hashed* (`internal/prng`), not how the seeds are warehoused.
+
+## Consequences
+
+- The domain boundary is visible in the schema: application code touches `games`,
+  engine code touches `game_engine_state`, and neither table forces the other's
+  concerns into its row.
+- The reference is one-directional (`game_engine_state.game_id → games.id`): a
+  game can exist before it is set up as an engine game (no engine row yet), which
+  matches turn 0 being a distinct setup step.
+- Slightly more ceremony to read seeds + turn (a join or a second query) — an
+  acceptable cost for keeping the domains uncoupled.
+- Engine-state grows here (later columns/tables) without widening the
+  application row.
+- **Scopes the engine to one game.** `game_id` is intended to be passed to the
+  engine constructor, so an engine instance is always driven by a single game:
+  it loads that game's row from `game_engine_state` and every table it touches is
+  keyed by that `game_id`. Keeping this state out of the application `games` row
+  keeps the engine's inputs to exactly the ids it is meant to see.
+- **Not a frozen surface.** Table placement and the `uint64`-as-`INTEGER` storage
+  can change via a forward migration ([ADR-0007](adr-0007-forward-only-migrations.md));
+  only the `internal/prng` addressing/hashing is frozen once a game exists.

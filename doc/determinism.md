@@ -36,8 +36,9 @@ reproducible from its seeds
   [decisions/adr-0001-counter-based-prng.md](decisions/adr-0001-counter-based-prng.md).
 - **Golden test vectors** pin `(seed1, seed2, path) → output` and are the
   enforcement mechanism: any change to addressing, hashing, or generator makes
-  them fail. _(Location: TODO once the package lands, e.g.
-  `seeds/testdata/golden.json`.)_
+  them fail. They live in `internal/prng/testdata/golden.json`; regenerate
+  intentionally with `go test ./internal/prng/ -update`, never to silence a
+  failing test.
 
 ## Frozen surfaces — do not change while any game exists
 
