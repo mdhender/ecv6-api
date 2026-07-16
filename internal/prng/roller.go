@@ -42,7 +42,7 @@ func (s Seeds) Roller(path ...Key) *Roller {
 // non-positive bound, and n <= 0 yields a zero-die sum of 0.
 func (r *Roller) RollN(n, sides int) int {
 	sum := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		sum += r.rng.IntN(sides) + 1
 	}
 	return sum

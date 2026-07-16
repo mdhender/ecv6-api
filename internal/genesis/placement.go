@@ -142,10 +142,7 @@ func Radius(n int, d Density) int {
 	// nearest hex count, ties toward the smaller R. The window makes the result
 	// robust to float rounding at the boundary between two radii.
 	approx := int(math.Round((math.Sqrt((4*float64(t)-1)/3) - 1) / 2))
-	lo := approx - 3
-	if lo < 0 {
-		lo = 0
-	}
+	lo := max(approx-3, 0)
 	hi := approx + 3
 
 	best := -1

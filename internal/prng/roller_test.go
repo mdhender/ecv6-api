@@ -17,7 +17,7 @@ func TestRollNBounds(t *testing.T) {
 	}
 	for _, c := range cases {
 		lo, hi := c.n, c.n*c.sides
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			got := roller.RollN(c.n, c.sides)
 			if got < lo || got > hi {
 				t.Fatalf("RollN(%d,%d) = %d, out of [%d,%d]", c.n, c.sides, got, lo, hi)
@@ -32,7 +32,7 @@ func TestRollNSingleDie(t *testing.T) {
 	roller := prng.New(5, 6).Roller(prng.TagDeposit, 1, 1)
 	const sides = 6
 	seen := map[int]bool{}
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		v := roller.RollN(1, sides)
 		if v < 1 || v > sides {
 			t.Fatalf("RollN(1,%d) = %d out of range", sides, v)
@@ -52,7 +52,7 @@ func TestRollRangeInclusive(t *testing.T) {
 	roller := prng.New(9, 10).Roller(prng.TagCluster)
 	const lo, hi = -3, 3
 	sawLo, sawHi := false, false
-	for i := 0; i < 5000; i++ {
+	for range 5000 {
 		v := roller.RollRange(lo, hi)
 		if v < lo || v > hi {
 			t.Fatalf("RollRange(%d,%d) = %d out of range", lo, hi, v)
@@ -96,7 +96,7 @@ func TestRollerReproducible(t *testing.T) {
 	seeds := prng.New(0xabc, 0xdef)
 	a := seeds.Roller(prng.TagDeposit, 3, -7)
 	b := seeds.Roller(prng.TagDeposit, 3, -7)
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		if x, y := a.RollN(2, 6), b.RollN(2, 6); x != y {
 			t.Fatalf("roll %d differs between equal-address Rollers: %d vs %d", i, x, y)
 		}
@@ -113,10 +113,10 @@ func TestRollerMatchesStream(t *testing.T) {
 	roller := seeds.Roller(path...)
 	rng := rand.New(seeds.Stream(path...))
 
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		const n, sides = 3, 4
 		want := 0
-		for d := 0; d < n; d++ {
+		for range n {
 			want += rng.IntN(sides) + 1
 		}
 		if got := roller.RollN(n, sides); got != want {

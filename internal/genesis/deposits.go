@@ -279,11 +279,7 @@ func depositBaseQuantity(amount float64, weight, totalWeight int) float64 {
 //	final        = max(1, floor(adjusted))
 func finalQuantity(base float64, adjPct int) int64 {
 	adjusted := base * (1 + float64(adjPct)/100)
-	q := int64(math.Floor(adjusted))
-	if q < 1 {
-		q = 1
-	}
-	return q
+	return max(1, int64(math.Floor(adjusted)))
 }
 
 // yieldTenths computes a deposit's final yield in tenths of a percentage point
@@ -305,10 +301,7 @@ func yieldTenths(baseYield float64, adjPct, habitability int) int {
 	}
 	net := adjPct - penalty
 	unrounded := baseYield * (1 + float64(net)/100)
-	tenths := int(math.Floor(unrounded * 10))
-	if tenths < 1 {
-		tenths = 1
-	}
+	tenths := max(1, int(math.Floor(unrounded*10)))
 	return tenths
 }
 
