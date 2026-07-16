@@ -15,6 +15,7 @@ var migrations = []string{
 	migration0003,
 	migration0004,
 	migration0005,
+	migration0006,
 }
 
 // migration0001 lays down the application-domain tables: accounts, sessions,
@@ -188,4 +189,59 @@ CREATE TABLE home_template (
                  CHECK (type IN ('rocky', 'asteroid belt', 'gas giant')),
     habitability INTEGER NOT NULL CHECK (habitability BETWEEN 0 AND 25),
     PRIMARY KEY (game_id, orbit)
+)`
+
+// migration0006 lays down the deposits stage's output: the natural-resource
+// deposits on each planet of each system, and on each orbit of the fixed
+// home-system template. Like the earlier generation tables this is start-of-life
+// state, decided once at setup; but a deposit's quantity and yield DO change
+// during play, so each carries an initial value (frozen at generation) and a
+// current value (mutated by play), which are equal at generation.
+//
+// Grounding: the schema and vocabulary (three resources, each deposit a quantity
+// and a yield) are the cluster core reference; which resources occur and each
+// deposit's quantity and yield are the Genesis Deposits supplement (ADR-0016).
+// See internal/genesis.
+//
+//   - deposit — one row per deposit of an occupied orbit, keyed by the planet's
+//     (game_id, q, r, orbit) and a per-planet creation-order index deposit_no
+//     (0-based). resource is one of the three codes; a deposit is exactly one
+//     resource. initial/current_quantity are positive whole numbers.
+//     initial/current_yield are stored as INTEGER tenths of a percentage point —
+//     42 means 4.2% — so yields are always a whole multiple of 0.1% and at least
+//     0.1% (the minimum the generator guarantees). It references the planet it
+//     belongs to via (game_id, q, r, orbit).
+//   - home_template_deposit — the home-system template's deposits, keyed by orbit
+//     and deposit_no, referencing home_template. The template is generated once;
+//     the per-player copy onto a chosen system is a later step and does not touch
+//     these tables.
+const migration0006 = `
+CREATE TABLE deposit (
+    game_id          INTEGER NOT NULL,
+    q                INTEGER NOT NULL,                 -- axial coordinate of the system
+    r                INTEGER NOT NULL,                 -- axial coordinate of the system
+    orbit            INTEGER NOT NULL CHECK (orbit BETWEEN 1 AND 10),
+    deposit_no       INTEGER NOT NULL,                 -- per-planet creation-order index (0-based)
+    resource         TEXT    NOT NULL
+                     CHECK (resource IN ('fuel', 'mtls', 'nmtl')),
+    initial_quantity INTEGER NOT NULL CHECK (initial_quantity >= 1),
+    current_quantity INTEGER NOT NULL CHECK (current_quantity >= 1),
+    initial_yield    INTEGER NOT NULL CHECK (initial_yield >= 1), -- tenths of a percent; 42 = 4.2%
+    current_yield    INTEGER NOT NULL CHECK (current_yield >= 1), -- tenths of a percent
+    PRIMARY KEY (game_id, q, r, orbit, deposit_no),
+    FOREIGN KEY (game_id, q, r, orbit) REFERENCES planet (game_id, q, r, orbit)
+);
+
+CREATE TABLE home_template_deposit (
+    game_id          INTEGER NOT NULL,
+    orbit            INTEGER NOT NULL CHECK (orbit BETWEEN 1 AND 10),
+    deposit_no       INTEGER NOT NULL,                 -- per-orbit creation-order index (0-based)
+    resource         TEXT    NOT NULL
+                     CHECK (resource IN ('fuel', 'mtls', 'nmtl')),
+    initial_quantity INTEGER NOT NULL CHECK (initial_quantity >= 1),
+    current_quantity INTEGER NOT NULL CHECK (current_quantity >= 1),
+    initial_yield    INTEGER NOT NULL CHECK (initial_yield >= 1),
+    current_yield    INTEGER NOT NULL CHECK (current_yield >= 1),
+    PRIMARY KEY (game_id, orbit, deposit_no),
+    FOREIGN KEY (game_id, orbit) REFERENCES home_template (game_id, orbit)
 )`

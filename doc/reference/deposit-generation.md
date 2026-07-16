@@ -19,14 +19,15 @@ and how the abundance settings apply) live upstream and are the source of truth:
 Never restate the rules here; link them. This page is engine mechanism and the
 stage seam. See [`doc/README.md`](../README.md).
 
-> **Not yet implemented.** The rules are grounded upstream (CLAUDE.md rule 3) —
-> this is the grounding the deposit work
-> ([mdhender/ecv6-api#67](https://github.com/mdhender/ecv6-api/issues/67)) was
-> blocked on, now resolved by [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)
-> and the Genesis Deposits supplement (note `Af/Am/An` remain placeholders while
-> Genesis is draft). The engine generator does not exist yet; implementation is
-> planned and ticketed separately. This page describes how it *will* implement
-> Genesis, so it stays in step as code lands.
+> **Implemented.** The generator lives in `internal/genesis` (`GenerateDeposits`,
+> `DepositSettings`), backed by the `deposit` and `home_template_deposit` tables
+> (`store.SaveDeposits` / `store.GetDeposits`). The rules are grounded upstream
+> (CLAUDE.md rule 3) in the Genesis Deposits supplement, resolved by
+> [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md).
+> The `Af/Am/An` endowments default to `4,891,250,000`; GM entry of custom values
+> is future work. The per-player home-system copy (E2) is out of scope here — the
+> home template's deposits are generated once. This page describes the engine
+> mechanism; the rules stay upstream.
 
 ## Deposits are stochastic and consume the abundance settings
 
@@ -65,11 +66,16 @@ compatibility surface between the two stages — see
 Each Genesis stage draws from its **own seed root**, derived
 `Derive(stageTag, generatorID, version)`
 ([ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)).
-The deposit stage has **no domain tag today** — the registry holds `TagCluster`,
-`TagSystem`, and `TagPlayer`. Whether deposits hang under `TagSystem` with a
-distinct generator id or take an appended `TagDeposit` is an **open implementation
-question for E1**; appending is free while no game exists, and the registry is
-append-only. The domain-tag registry and the key-path hash encoding stay globally
+Deposits root at `Derive(TagDeposit, DepositsGeneratorID, DepositsVersion)` with
+`(generatorID, version) = (1, 1)`. `TagDeposit` (`4`) is the appended domain tag
+the registry now carries alongside `TagCluster`, `TagSystem`, and `TagPlayer`.
+Each ordinary system draws its deposits from one `Roller` at
+`root.Roller(Key(q), Key(r))`; the home-system template draws from
+`root.Roller(HomeTemplateQ, HomeTemplateR)`, the fixed sentinel address from the
+system-contents stage. Within a system the seven phases are drawn strictly in the
+documented order — each phase completed system-wide before the next — addressing
+planets and resources by their deterministic order, never by Go-map iteration
+order. The domain-tag registry and the key-path hash encoding stay globally
 frozen; a generator's internal addressing freezes per version, on its own
 schedule. See [`doc/determinism.md`](../determinism.md) and `internal/prng`.
 
