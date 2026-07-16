@@ -28,10 +28,16 @@ const goldenPath = "testdata/golden.json"
 // drawsPerStream is how many uint64 each golden stream pins.
 const drawsPerStream = 4
 
-// golden is the on-disk shape of the frozen vectors.
+// rollsPerVector is how many rolls each golden roll vector pins.
+const rollsPerVector = 8
+
+// golden is the on-disk shape of the frozen vectors. New sections are APPENDED
+// after the original streams/derives so those vectors stay byte-identical.
 type golden struct {
 	Streams []streamVector `json:"streams"`
 	Derives []deriveVector `json:"derives"`
+	Rolls   []rollVector   `json:"rolls"`
+	Roots   []rootVector   `json:"roots"`
 }
 
 type streamVector struct {
@@ -50,6 +56,37 @@ type deriveVector struct {
 	WantChildDraw uint64 `json:"want_child_draw"`
 }
 
+// rollVector pins a Roller's output sequence for a fixed seed + address. Kind
+// selects the call: "rolln" repeats RollN(N, Sides); "rollrange" repeats
+// RollRange(Lo, Hi). Pinning the whole sequence catches any change to the
+// draw-to-die mapping, the draw order, or the reduction.
+type rollVector struct {
+	Seed1 uint64     `json:"seed1"`
+	Seed2 uint64     `json:"seed2"`
+	Path  []prng.Key `json:"path"`
+	Kind  string     `json:"kind"`
+	N     int        `json:"n"`
+	Sides int        `json:"sides"`
+	Lo    int        `json:"lo"`
+	Hi    int        `json:"hi"`
+	Out   []int      `json:"out"`
+}
+
+// rootVector pins the generator seed-root encoding (ADR-0016 / issue #79
+// decision 1): each stage roots at Derive(stageTag, generatorID, version), and
+// below that root the generator owns its addressing. We freeze one fixed
+// (genID, version) encoding so T2-T4 inherit a frozen root convention. GenID and
+// Version are plain Key integers.
+type rootVector struct {
+	Seed1    uint64     `json:"seed1"`
+	Seed2    uint64     `json:"seed2"`
+	StageTag prng.Key   `json:"stage_tag"`
+	GenID    prng.Key   `json:"gen_id"`
+	Version  prng.Key   `json:"version"`
+	SubPath  []prng.Key `json:"sub_path"`
+	Draw     uint64     `json:"draw"`
+}
+
 // goldenInputs enumerates the addresses whose outputs we freeze. Extend by
 // APPENDING; never change an existing entry's seeds or path.
 func goldenInputs() golden {
@@ -60,10 +97,14 @@ func goldenInputs() golden {
 		{prng.TagSystem, 3, -7, 1}, // longer path must differ from the one above
 		{prng.TagPlayer, 1},
 		{prng.TagPlayer, 2},
+		// TagDeposit (appended tag 4): pin its addressing going forward.
+		{prng.TagDeposit, 0, 0},
+		{prng.TagDeposit, 3, -7},
 	}
 	derivePaths := [][]prng.Key{
 		{prng.TagCluster},
 		{prng.TagPlayer, 42},
+		{prng.TagDeposit, 7},
 	}
 	const s1, s2 = 0x0123456789abcdef, 0xfedcba9876543210
 
@@ -82,6 +123,63 @@ func goldenInputs() golden {
 		g.Derives = append(g.Derives, deriveVector{
 			Seed1: s1, Seed2: s2, Path: p,
 			WantChildDraw: child.Stream(prng.TagCluster).Uint64(),
+		})
+	}
+
+	// Roll sequences: pin RollN and RollRange output order for fixed addresses.
+	rollNInputs := []struct {
+		path     []prng.Key
+		n, sides int
+	}{
+		{[]prng.Key{prng.TagDeposit, 0, 0}, 3, 4}, // 3d4
+		{[]prng.Key{prng.TagSystem, 1, 1}, 2, 6},  // 2d6
+	}
+	for _, in := range rollNInputs {
+		roller := seeds.Roller(in.path...)
+		out := make([]int, rollsPerVector)
+		for i := range out {
+			out[i] = roller.RollN(in.n, in.sides)
+		}
+		g.Rolls = append(g.Rolls, rollVector{
+			Seed1: s1, Seed2: s2, Path: in.path, Kind: "rolln",
+			N: in.n, Sides: in.sides, Out: out,
+		})
+	}
+	rollRangeInputs := []struct {
+		path   []prng.Key
+		lo, hi int
+	}{
+		{[]prng.Key{prng.TagCluster}, 1, 10},
+		{[]prng.Key{prng.TagDeposit, 3, -7}, -3, 3},
+	}
+	for _, in := range rollRangeInputs {
+		roller := seeds.Roller(in.path...)
+		out := make([]int, rollsPerVector)
+		for i := range out {
+			out[i] = roller.RollRange(in.lo, in.hi)
+		}
+		g.Rolls = append(g.Rolls, rollVector{
+			Seed1: s1, Seed2: s2, Path: in.path, Kind: "rollrange",
+			Lo: in.lo, Hi: in.hi, Out: out,
+		})
+	}
+
+	// Generator seed roots: Derive(stageTag, genID, version), then a
+	// generator-owned sub-path. Fixed (genID, version) = (1, 1) here.
+	rootInputs := []struct {
+		stageTag, genID, version prng.Key
+		subPath                  []prng.Key
+	}{
+		{prng.TagCluster, 1, 1, []prng.Key{1, 0, 0}},
+		{prng.TagDeposit, 1, 1, []prng.Key{1, 0, 0}},
+	}
+	for _, in := range rootInputs {
+		root := seeds.Derive(in.stageTag, in.genID, in.version)
+		g.Roots = append(g.Roots, rootVector{
+			Seed1: s1, Seed2: s2,
+			StageTag: in.stageTag, GenID: in.genID, Version: in.version,
+			SubPath: in.subPath,
+			Draw:    root.Stream(in.subPath...).Uint64(),
 		})
 	}
 	return g
@@ -107,6 +205,30 @@ func TestGolden(t *testing.T) {
 		child := prng.New(v.Seed1, v.Seed2).Derive(v.Path...)
 		if got := child.Stream(prng.TagCluster).Uint64(); got != v.WantChildDraw {
 			t.Errorf("Derive(%v) child draw = %d, want %d (frozen surface changed?)", v.Path, got, v.WantChildDraw)
+		}
+	}
+	for _, v := range want.Rolls {
+		roller := prng.New(v.Seed1, v.Seed2).Roller(v.Path...)
+		for i, w := range v.Out {
+			var got int
+			switch v.Kind {
+			case "rolln":
+				got = roller.RollN(v.N, v.Sides)
+			case "rollrange":
+				got = roller.RollRange(v.Lo, v.Hi)
+			default:
+				t.Fatalf("unknown roll kind %q", v.Kind)
+			}
+			if got != w {
+				t.Errorf("Roller(%v).%s roll %d = %d, want %d (frozen surface changed?)", v.Path, v.Kind, i, got, w)
+			}
+		}
+	}
+	for _, v := range want.Roots {
+		root := prng.New(v.Seed1, v.Seed2).Derive(v.StageTag, v.GenID, v.Version)
+		if got := root.Stream(v.SubPath...).Uint64(); got != v.Draw {
+			t.Errorf("Derive(%d,%d,%d).Stream(%v) = %d, want %d (frozen root convention changed?)",
+				v.StageTag, v.GenID, v.Version, v.SubPath, got, v.Draw)
 		}
 	}
 }

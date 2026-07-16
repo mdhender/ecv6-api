@@ -16,4 +16,5 @@ const (
 	TagCluster            // 1: cluster generation
 	TagSystem             // 2: per-system contents, addressed by (q, r)
 	TagPlayer             // 3: per-player draws, addressed by player_id
+	TagDeposit            // 4: per-deposit draws, addressed by (q, r)
 )
