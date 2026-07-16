@@ -26,8 +26,9 @@ type/schema mapping.
 | Turn | `TODO` | `TODO` | `0` = setup/no-turn (zero value); advances only on GM action; a report reflects the **start** of its turn |
 | Player | `TODO` | `TODO` | `id` positive int, sequential, **never reused**; `email` lowercased, unique within game across active **and** inactive; active/inactive state, never physically deleted |
 | Password | `TODO` | `TODO` | plaintext shared secret; JSON-safe, space-free |
-| Cluster | `TODO` | `TODO` | one per game; derives its own seeds from the game's; generated once at setup |
-| System | `TODO` | `TODO` | addressed by axial `(q, r)`; contents drawn from a stream keyed by `(q, r)`, order-independent |
+| Cluster | `store.Cluster` | `cluster` | one per game (`game_id` PK); holds the placement stage's derived radius `R` and the settings used (`n`, `density`, `spacing`); `R` is a pure function of `N` and density (no randomness); generated once at setup, immutable (no turn axis). Placement lives in `internal/genesis` |
+| System | `store.System` | `system` | addressed by axial `(q, r)`, PK `(game_id, q, r)`; the placement output. Contents (orbits/planets), drawn order-independently from a stream keyed by `(q, r)`, arrive in a later stage |
+| Generator selection | `store.GeneratorSelection` | `game_generator` | one row per generation stage per game (`placement`, `system_contents`, `deposits`); records `(generator_id, version, settings)`, settings as opaque stage-specific JSON (ADR-0016). PK `(game_id, stage)` |
 | Orders | `TODO` | `TODO` | plain text; applied together at turn processing; do not advance the current turn |
 
 ## Application domain (implemented)

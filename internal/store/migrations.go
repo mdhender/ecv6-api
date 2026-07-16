@@ -13,6 +13,7 @@ var migrations = []string{
 	migration0001,
 	migration0002,
 	migration0003,
+	migration0004,
 }
 
 // migration0001 lays down the application-domain tables: accounts, sessions,
@@ -98,3 +99,52 @@ CREATE TABLE game_engine_state (
 // A duplicate INSERT/UPDATE surfaces as ErrConflict (see isConstraint).
 const migration0003 = `
 CREATE UNIQUE INDEX games_name_unique ON games (name)`
+
+// migration0004 lays down the cluster-generation tables: the cluster and its
+// systems (the placement stage's output), plus the per-game record of which
+// generator, version, and settings each generation stage ran. Generation output
+// is start-of-life state, decided once at setup and immutable thereafter (the
+// cluster core reference), so these carry no turn axis and no soft-delete flag —
+// regenerating during alpha replaces the rows outright.
+//
+// Grounding: the schema and vocabulary (axial (q, r), a cluster of N systems)
+// are the cluster core reference; the placement settings (N, density, spacing)
+// and the three staged generators are the Genesis Placement supplement and
+// ADR-0016. See internal/genesis.
+//
+//   - cluster — one row per game: the derived radius R and the placement settings
+//     actually used (N, density tier, spacing S). game_id is the primary key, so a
+//     game has at most one cluster.
+//   - system — the placed hexes, addressed by axial (q, r) within a game. Ten
+//     orbits and their planets arrive in a later stage's migration; this table is
+//     just the placement output.
+//   - game_generator — the (stage, generator, version, settings) a game records
+//     for each of the three stages (ADR-0016: a game records three generator pairs).
+//     settings is opaque JSON so a stage can carry its own shape (deposits will add
+//     abundance knobs) without a schema change. Only the placement row is written
+//     today; the CHECK enumerates all three stages the schema accommodates.
+const migration0004 = `
+CREATE TABLE cluster (
+    game_id INTEGER NOT NULL PRIMARY KEY REFERENCES games (id),
+    radius  INTEGER NOT NULL,                 -- R(N, D), derived from N and density (no randomness)
+    n       INTEGER NOT NULL,                 -- number of systems requested and placed
+    density TEXT    NOT NULL,                 -- stellar-density tier used
+    spacing INTEGER NOT NULL                  -- minimum system spacing S used
+);
+
+CREATE TABLE system (
+    game_id INTEGER NOT NULL REFERENCES games (id),
+    q       INTEGER NOT NULL,                 -- axial coordinate
+    r       INTEGER NOT NULL,                 -- axial coordinate
+    PRIMARY KEY (game_id, q, r)
+);
+
+CREATE TABLE game_generator (
+    game_id      INTEGER NOT NULL REFERENCES games (id),
+    stage        TEXT    NOT NULL
+                 CHECK (stage IN ('placement', 'system_contents', 'deposits')),
+    generator_id INTEGER NOT NULL,            -- generator identity within the stage
+    version      INTEGER NOT NULL,            -- generator version (immutable once a game depends on it)
+    settings     TEXT    NOT NULL DEFAULT '{}', -- opaque, stage-specific JSON
+    PRIMARY KEY (game_id, stage)
+)`
