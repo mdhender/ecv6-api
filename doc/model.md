@@ -27,7 +27,9 @@ type/schema mapping.
 | Player | `TODO` | `TODO` | `id` positive int, sequential, **never reused**; `email` lowercased, unique within game across active **and** inactive; active/inactive state, never physically deleted |
 | Password | `TODO` | `TODO` | plaintext shared secret; JSON-safe, space-free |
 | Cluster | `store.Cluster` | `cluster` | one per game (`game_id` PK); holds the placement stage's derived radius `R` and the settings used (`n`, `density`, `spacing`); `R` is a pure function of `N` and density (no randomness); generated once at setup, immutable (no turn axis). Placement lives in `internal/genesis` |
-| System | `store.System` | `system` | addressed by axial `(q, r)`, PK `(game_id, q, r)`; the placement output. Contents (orbits/planets), drawn order-independently from a stream keyed by `(q, r)`, arrive in a later stage |
+| System | `store.System` | `system` | addressed by axial `(q, r)`, PK `(game_id, q, r)`; the placement output. Its planets are filled by the system-contents stage (see Planet), drawn order-independently from a stream keyed by `(q, r)` |
+| Planet | `store.Planet` | `planet` | one row per **occupied** orbit of a system, PK `(game_id, q, r, orbit)`, FK `(game_id, q, r)` → `system`; `type` (rocky / asteroid belt / gas giant) and `orbit` (1..10) are schema, `habitability` (0..25) is the system-contents generator's value. Empty orbits carry **no** row. Contents live in `internal/genesis` (`GenerateContents`) |
+| Home template | `store.HomePlanet` | `home_template` | the one fixed home-system template per game, PK `(game_id, orbit)`; ten planets, no rolls, identical for every player (`genesis.HomeTemplate`). Copied onto a chosen system when a player joins (a later stage), which does not touch this table |
 | Generator selection | `store.GeneratorSelection` | `game_generator` | one row per generation stage per game (`placement`, `system_contents`, `deposits`); records `(generator_id, version, settings)`, settings as opaque stage-specific JSON (ADR-0016). PK `(game_id, stage)` |
 | Orders | `TODO` | `TODO` | plain text; applied together at turn processing; do not advance the current turn |
 

@@ -14,6 +14,7 @@ var migrations = []string{
 	migration0002,
 	migration0003,
 	migration0004,
+	migration0005,
 }
 
 // migration0001 lays down the application-domain tables: accounts, sessions,
@@ -147,4 +148,44 @@ CREATE TABLE game_generator (
     version      INTEGER NOT NULL,            -- generator version (immutable once a game depends on it)
     settings     TEXT    NOT NULL DEFAULT '{}', -- opaque, stage-specific JSON
     PRIMARY KEY (game_id, stage)
+)`
+
+// migration0005 lays down the system-contents stage's output: the planets that
+// occupy each system's orbits, plus the fixed home-system template. Like the
+// placement tables (migration0004) this is start-of-life state, decided once at
+// setup and immutable thereafter (the cluster core reference), so it carries no
+// turn axis and no soft-delete flag — regenerating during alpha replaces the rows.
+//
+// Grounding: the schema and vocabulary (ten orbits, planet types, per-planet
+// habitability) are the cluster core reference; which planet occupies which orbit
+// and its habitability are the Genesis System Contents supplement (ADR-0016). See
+// internal/genesis.
+//
+//   - planet — one row per occupied orbit of a system, keyed by the system's
+//     (game_id, q, r) and its orbit. Empty orbits carry NO row. type and orbit are
+//     schema (constrained by CHECK); habitability is the generator's per-planet
+//     value, in 0..25. It references the system it belongs to via (game_id, q, r).
+//   - home_template — the one fixed home-system template per game, keyed by orbit.
+//     The template is generated once; the per-player copy onto a chosen system is a
+//     later step and does not touch this table.
+const migration0005 = `
+CREATE TABLE planet (
+    game_id      INTEGER NOT NULL,
+    q            INTEGER NOT NULL,                 -- axial coordinate of the system
+    r            INTEGER NOT NULL,                 -- axial coordinate of the system
+    orbit        INTEGER NOT NULL CHECK (orbit BETWEEN 1 AND 10),
+    type         TEXT    NOT NULL
+                 CHECK (type IN ('rocky', 'asteroid belt', 'gas giant')),
+    habitability INTEGER NOT NULL CHECK (habitability BETWEEN 0 AND 25),
+    PRIMARY KEY (game_id, q, r, orbit),
+    FOREIGN KEY (game_id, q, r) REFERENCES system (game_id, q, r)
+);
+
+CREATE TABLE home_template (
+    game_id      INTEGER NOT NULL REFERENCES games (id),
+    orbit        INTEGER NOT NULL CHECK (orbit BETWEEN 1 AND 10),
+    type         TEXT    NOT NULL
+                 CHECK (type IN ('rocky', 'asteroid belt', 'gas giant')),
+    habitability INTEGER NOT NULL CHECK (habitability BETWEEN 0 AND 25),
+    PRIMARY KEY (game_id, orbit)
 )`
