@@ -19,12 +19,15 @@ truth:
 Never restate the rules here; link them. This page is engine mechanism and the
 stage seam. See [`doc/README.md`](../README.md).
 
-> **Not yet implemented.** The rules are grounded upstream (CLAUDE.md rule 3), but
-> the engine generator does not exist yet; implementation is planned and ticketed
-> separately (see [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)
-> and epic [mdhender/ecv6-api#65](https://github.com/mdhender/ecv6-api/issues/65)).
-> This page describes how it *will* implement Genesis, so it stays in step as code
-> lands.
+> **Implemented.** The pure generator lives in
+> [`internal/genesis`](../../internal/genesis) (`GenerateContents`, `HomeTemplate`)
+> and its output persists via `internal/store` (`planet` and `home_template`
+> tables, migration 5; `SaveSystemContents`/`GetSystemContents`). The rules it
+> implements are grounded upstream (CLAUDE.md rule 3) in the supplement linked
+> above; the godoc on the code cites it. Deposits (the next stage) and the
+> per-player home-system copy are ticketed separately (see
+> [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md) and
+> epic [mdhender/ecv6-api#65](https://github.com/mdhender/ecv6-api/issues/65)).
 
 ## Systems vary
 
@@ -62,11 +65,22 @@ The global domain-tag registry and the key-path hash encoding remain the frozen
 surfaces; only the *root* addressing is global. See
 [`doc/determinism.md`](../determinism.md) and `internal/prng`.
 
-The per-system key-path shape below that root (for example, whether a system keys
-by `(q, r)` and how per-orbit draws sub-address) is a generator-internal decision
-and an **open implementation question for E1** — it is not a frozen surface and is
-not fixed here. It freezes per generator version, on that generator's schedule,
-once a game depends on it.
+System Contents roots at `Derive(TagSystem, SysContentsGeneratorID,
+SysContentsVersion)` with `(generatorID, version) = (1, 1)`. Below that root each
+ordinary system draws from one stream addressed by its `(q, r)` —
+`root.Roller(Key(q), Key(r))` — so a system's contents depend only on the game
+seeds and its own coordinates, never on Go-map iteration or the order systems are
+processed. Each system's single `Roller` is drawn from in a fixed order: planet
+count, then the orbit shuffle (only for four-plus-planet systems), then
+habitability per occupied orbit in ascending orbit order.
+
+The per-system key-path shape below the root is a generator-internal decision, not
+a global frozen surface; it freezes per generator version, on this generator's
+schedule, once a game depends on it. The home-system template makes no draws, so
+it reserves a fixed sentinel `(q, r)` address deliberately outside any legal
+radius (`HomeTemplateQ`, `HomeTemplateR`), distinct from every real system, so the
+deposit stage can roll the template's deposits without colliding with an ordinary
+system.
 
 ## See also
 

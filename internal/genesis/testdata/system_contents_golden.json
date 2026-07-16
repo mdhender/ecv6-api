@@ -1,0 +1,177 @@
+{
+  "seed1": 81985529216486895,
+  "seed2": 18364758544493064720,
+  "systems": [
+    {
+      "q": 0,
+      "r": 0,
+      "planets": [
+        {
+          "orbit": 3,
+          "type": "rocky",
+          "habitability": 11
+        },
+        {
+          "orbit": 4,
+          "type": "asteroid belt",
+          "habitability": 0
+        },
+        {
+          "orbit": 8,
+          "type": "gas giant",
+          "habitability": 0
+        }
+      ]
+    },
+    {
+      "q": 3,
+      "r": -3,
+      "planets": [
+        {
+          "orbit": 1,
+          "type": "rocky",
+          "habitability": 2
+        },
+        {
+          "orbit": 5,
+          "type": "rocky",
+          "habitability": 6
+        },
+        {
+          "orbit": 6,
+          "type": "gas giant",
+          "habitability": 8
+        },
+        {
+          "orbit": 7,
+          "type": "gas giant",
+          "habitability": 5
+        },
+        {
+          "orbit": 9,
+          "type": "rocky",
+          "habitability": 0
+        }
+      ]
+    },
+    {
+      "q": -5,
+      "r": 2,
+      "planets": [
+        {
+          "orbit": 1,
+          "type": "rocky",
+          "habitability": 2
+        },
+        {
+          "orbit": 2,
+          "type": "rocky",
+          "habitability": 2
+        },
+        {
+          "orbit": 3,
+          "type": "rocky",
+          "habitability": 10
+        },
+        {
+          "orbit": 4,
+          "type": "asteroid belt",
+          "habitability": 0
+        },
+        {
+          "orbit": 5,
+          "type": "rocky",
+          "habitability": 7
+        },
+        {
+          "orbit": 7,
+          "type": "gas giant",
+          "habitability": 2
+        },
+        {
+          "orbit": 10,
+          "type": "asteroid belt",
+          "habitability": 0
+        }
+      ]
+    },
+    {
+      "q": 10,
+      "r": -7,
+      "planets": [
+        {
+          "orbit": 3,
+          "type": "rocky",
+          "habitability": 14
+        },
+        {
+          "orbit": 4,
+          "type": "asteroid belt",
+          "habitability": 0
+        },
+        {
+          "orbit": 8,
+          "type": "gas giant",
+          "habitability": 7
+        }
+      ]
+    },
+    {
+      "q": -8,
+      "r": 15,
+      "planets": [
+        {
+          "orbit": 1,
+          "type": "rocky",
+          "habitability": 1
+        },
+        {
+          "orbit": 3,
+          "type": "rocky",
+          "habitability": 13
+        },
+        {
+          "orbit": 5,
+          "type": "rocky",
+          "habitability": 9
+        },
+        {
+          "orbit": 6,
+          "type": "gas giant",
+          "habitability": 5
+        },
+        {
+          "orbit": 9,
+          "type": "rocky",
+          "habitability": 0
+        },
+        {
+          "orbit": 10,
+          "type": "asteroid belt",
+          "habitability": 0
+        }
+      ]
+    },
+    {
+      "q": 7,
+      "r": 1,
+      "planets": [
+        {
+          "orbit": 3,
+          "type": "rocky",
+          "habitability": 13
+        },
+        {
+          "orbit": 4,
+          "type": "asteroid belt",
+          "habitability": 0
+        },
+        {
+          "orbit": 8,
+          "type": "gas giant",
+          "habitability": 1
+        }
+      ]
+    }
+  ]
+}
