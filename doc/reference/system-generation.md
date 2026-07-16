@@ -1,79 +1,81 @@
-# System generation (testbed)
+# System generation
 
-Contributor reference for how the engine generates **system contents** at setup.
-This is implementation detail — *how the back end fills a system*, not the
-player-facing rules for *what a system is*. The player/GM-facing rules (a system
-is a hex at `(q, r)`; ten orbits; planet types; habitability) live in the game
-docs' [cluster reference](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/cluster.md).
+Contributor reference for how the engine implements **system-contents
+generation** at setup — *how the back end fills a system*, not the player-facing
+rules for *what a system is*. This stage implements the **Genesis System
+Contents** generator; the rules it implements (planet count, per-orbit planet
+type, habitability, the home-system template) live upstream and are the source of
+truth:
 
-> **Interim home.** These facts were extracted from the game docs and live here
-> as Markdown until the engine cluster/system package exists; at that point they
-> migrate to that package's godoc, which becomes the reference truth. See
-> [`doc/README.md`](../README.md).
+- [Genesis System Contents](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/generators/genesis/system-contents.md)
+  — the generator this stage implements (draft, v1).
+- [Genesis family index](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/generators/genesis/_index.md)
+  — the three staged generators and how a game records `(generator, version)` per
+  stage.
+- [Cluster core](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/cluster.md)
+  — the shared schema (hex `(q, r)`, ten orbits, planet types, habitability) every
+  generator fills in.
 
-## Testbed status
+Never restate the rules here; link them. This page is engine mechanism and the
+stage seam. See [`doc/README.md`](../README.md).
 
-This iteration of the engine is a **testbed**. The system generator is
-deliberately simplistic so we can exercise the deterministic cluster surface
-(placement, radius, spacing) without committing to final system-content rules.
-The generation of *system contents* described here is expected to change; the
-*cluster placement* rules it sits inside are documented player-side and are
-stable.
+> **Not yet implemented.** The rules are grounded upstream (CLAUDE.md rule 3), but
+> the engine generator does not exist yet; implementation is planned and ticketed
+> separately (see [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)
+> and epic [mdhender/ecv6-api#65](https://github.com/mdhender/ecv6-api/issues/65)).
+> This page describes how it *will* implement Genesis, so it stays in step as code
+> lands.
 
-## Every system is identical
+## Systems vary
 
-In the testbed the generator gives **every system the same contents**: the same
-planets in the same orbits with the same habitability, and — because they are
-placed by a deterministic formula from planet type and orbit — the same
-natural-resource deposits. Systems do not vary from one another at all. See
-[Deposits](deposit-generation.md). Per-system variation is future
-work.
+Genesis System Contents produces **varied, stochastic** systems: the number of
+planets, which orbits they occupy, and each planet's type and habitability are
+rolled per system (with a fixed layout for the smallest systems and a habitability
+top-up for the largest). This retires the earlier interim behavior, in which every
+system was identical and no randomness was drawn. See the supplement for the exact
+dice, orbits, clamps, and the min-habitability rule.
 
-### Fixed per-orbit layout
+A separate **fixed home-system template** is applied when a player joins: the
+generator overwrites the chosen system's ordinary contents with the template. The
+template's values are the supplement's, not this repo's.
 
-Every system has exactly this layout, orbit `1` (innermost) to `10` (outermost).
-An orbit either holds one planet or is empty.
+## The stage seam
 
-| Orbit | Planet        | Habitability |
-| ----- | ------------- | -----------: |
-| 1     | Rocky         | 0            |
-| 2     | Rocky         | 1            |
-| 3     | Rocky         | 20           |
-| 4     | Asteroid belt | 0            |
-| 5     | *(empty)*     | 0            |
-| 6     | Gas giant     | 10           |
-| 7     | Gas giant     | 0            |
-| 8     | Gas giant     | 0            |
-| 9     | Asteroid belt | 0            |
-| 10    | *(empty)*     | 0            |
+Generation is staged and each stage's generator is chosen independently
+([ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)).
+System contents runs **after placement** and **before deposits**:
 
-Habitability is a per-planet integer; higher is more habitable. In this layout
-the rocky planet in orbit `3` (habitability `20`) is the most habitable.
+- **In:** the placed systems (their `(q, r)` hexes) from the placement stage.
+- **Out:** for every ordinary system, each occupied orbit's planet type and
+  habitability; plus the fixed home-system template. Empty orbits carry no planet.
 
-## Reserved per-system stream
+Deposits consumes `(planet type, orbit)` per planet, so this stage's output is the
+compatibility surface between the two — keep it stable as both stages version.
 
-Each system has its own PRNG stream, addressed by the `TagSystem` domain tag and
-the system's coordinates — key path `(TagSystem, q, r)`. See
+## Determinism
+
+Each Genesis stage draws from its **own seed root**, derived
+`Derive(stageTag, generatorID, version)` — the stage's domain tag, then the
+generator's identity and version — below which the generator owns its addressing
+entirely ([ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)).
+The global domain-tag registry and the key-path hash encoding remain the frozen
+surfaces; only the *root* addressing is global. See
 [`doc/determinism.md`](../determinism.md) and `internal/prng`.
 
-Because every system is currently identical — deposits included, since they are
-formula-driven (see [Deposits](deposit-generation.md)) — **the
-generator does not draw from this stream**. It is still created and keyed by
-`(q, r)`; it is simply unused. The stream is reserved so that when system
-contents begin to vary — deposits first — the variation draws from a stream whose
-address shape is already frozen.
-
-> The key-path **length** is part of the address, so a longer path such as
-> `(TagSystem, q, r, orbit)` is a *different* stream from `(TagSystem, q, r)`.
-> Freezing the `(q, r)` shape now does not commit us to any per-orbit or
-> per-resource sub-addressing; that shape is chosen when deposits land. See
-> [Deposits](deposit-generation.md).
+The per-system key-path shape below that root (for example, whether a system keys
+by `(q, r)` and how per-orbit draws sub-address) is a generator-internal decision
+and an **open implementation question for E1** — it is not a frozen surface and is
+not fixed here. It freezes per generator version, on that generator's schedule,
+once a game depends on it.
 
 ## See also
 
-- [Deposits](deposit-generation.md) — the deposits every planet carries, and how
-  they are derived.
+- [Deposits](deposit-generation.md) — the next stage, which turns this stage's
+  planet types and orbits into resource deposits.
 - [`doc/determinism.md`](../determinism.md) — streams, key paths, domain tags,
   frozen surfaces.
-- [Cluster reference (game docs)](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/cluster.md)
-  — the player-facing system and cluster rules.
+- [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md) —
+  why the rulebook splits into a core and generator supplements, and how each
+  generator gets a seed root.
+- [Genesis System Contents](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/generators/genesis/system-contents.md)
+  — the rules this stage implements.

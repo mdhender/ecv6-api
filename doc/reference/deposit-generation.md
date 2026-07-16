@@ -1,107 +1,85 @@
-# Deposits (testbed)
+# Deposits
 
-Contributor reference for the **natural-resource deposits** planets carry in the
-testbed: what each planet holds and in what amounts. *How* the engine derives
-these values is an implementation detail — see [Derivation](#derivation) — and is
-subject to change; the player-facing game docs describe only these qualities and
-defer generation to this reference. The values are **deterministic** (a pure
-function of planet type and orbit, no random draw) and, because every testbed
-system has the same [fixed layout](system-generation.md), identical in every
-system.
+Contributor reference for how the engine implements **deposit generation** at
+setup — *how the back end places the natural-resource deposits planets carry*, not
+the player-facing rules for what those deposits are. This stage implements the
+**Genesis Deposits** generator; the rules it implements (endowments, planet
+shares, deposit counts, quantities, the yield ladder, the habitability penalty,
+and how the abundance settings apply) live upstream and are the source of truth:
 
-> **Scope.** Testbed values, engine-owned, **not yet grounded** in the rulebook
-> (CLAUDE.md rule 3) — the open deposit blocker on E1 (mdhender/ecv6-api#67). It
-> does not yet consume the cluster's abundance settings. Not a rule of the game;
-> do not cite as one.
+- [Genesis Deposits](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/generators/genesis/deposits.md)
+  — the generator this stage implements (draft, v1).
+- [Genesis family index](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/generators/genesis/_index.md)
+  — the three staged generators and the abundance settings (`fuel`, `mtls`,
+  `nmtl`) this stage reads.
+- [Cluster core](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/cluster.md)
+  — the shared schema: three resources (fuel, metals, non-metals), each deposit a
+  quantity and a yield.
 
-Three resources: fuel (`FUEL`), metals (`METL`), non-metals (`NMTL`). Each deposit
-has a **quantity** (its starting amount) and a **yield percentage**.
+Never restate the rules here; link them. This page is engine mechanism and the
+stage seam. See [`doc/README.md`](../README.md).
 
-## Deposits by orbit
+> **Not yet implemented.** The rules are grounded upstream (CLAUDE.md rule 3) —
+> this is the grounding the deposit work
+> ([mdhender/ecv6-api#67](https://github.com/mdhender/ecv6-api/issues/67)) was
+> blocked on, now resolved by [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)
+> and the Genesis Deposits supplement (note `Af/Am/An` remain placeholders while
+> Genesis is draft). The engine generator does not exist yet; implementation is
+> planned and ticketed separately. This page describes how it *will* implement
+> Genesis, so it stays in step as code lands.
 
-The deposits every system carries, orbit by orbit — a golden reference for tests.
-`n @ y%` is `n` deposits at yield `y%`; each carries the row's per-deposit
-quantity. Empty orbits carry none.
+## Deposits are stochastic and consume the abundance settings
 
-| Orbit | Planet        | Qty / deposit |   FUEL |   METL |   NMTL |
-|-------|---------------|--------------:|-------:|-------:|-------:|
-| 1     | Rocky         |    33,333,334 | 1 @ 2% | 1 @ 3% | 1 @ 3% |
-| 2     | Rocky         |    33,333,334 | 1 @ 2% | 1 @ 3% | 1 @ 3% |
-| 3     | Rocky         |    33,333,334 | 1 @ 2% | 1 @ 3% | 1 @ 3% |
-| 4     | Asteroid belt |    16,666,667 | 1 @ 2% | 3 @ 3% | 2 @ 3% |
-| 5     | *(empty)*     |             — |      — |      — |      — |
-| 6     | Gas giant     |    16,666,667 | 3 @ 3% | 1 @ 5% | 2 @ 6% |
-| 7     | Gas giant     |    16,666,667 | 3 @ 3% | 1 @ 5% | 2 @ 6% |
-| 8     | Gas giant     |    16,666,667 | 3 @ 2% | 1 @ 3% | 2 @ 3% |
-| 9     | Asteroid belt |    16,666,667 | 1 @ 1% | 3 @ 2% | 2 @ 2% |
-| 10    | *(empty)*     |             — |      — |      — |      — |
+Genesis Deposits is **fully stochastic**: system endowments scale by planet count,
+planets take resource shares by affinity, deposit counts and per-deposit weights
+are rolled, and quantity and yield each take an independent adjustment roll, with a
+habitability penalty on yield. It **does** consume the cluster's `fuel`, `mtls`,
+and `nmtl` abundance settings — each setting shifts its resource's final quantity
+and yield.
 
-## System-wide totals
+This retires the earlier interim behavior — deterministic, no random draw,
+quantity `⌈100M / n⌉`, a fixed yield-halving formula, and explicitly *not*
+consuming the abundance settings. Do not carry any of those numbers forward; the
+supplement's dice, tables, and ladders are the truth.
 
-Summing every deposit across the ten orbits — identical in every system — gives
-the system's starting resource totals. Totals are not round because the
-per-planet `100,000,000` is divided with round-up (see [Quantity](#quantity)).
+## The stage seam
 
-| Resource  | Deposits |  Total quantity |
-|-----------|---------:|----------------:|
-| FUEL      |       14 |     283,333,339 |
-| METL      |       12 |     250,000,005 |
-| NMTL      |       13 |     266,666,672 |
-| **Total** |   **39** | **800,000,016** |
+Generation is staged and each stage's generator is chosen independently
+([ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)).
+Deposits runs **last**, after system contents:
 
-## Derivation
+- **In:** `(planet type, orbit)` for every planet of every ordinary system, plus
+  the fixed home-system template, from the system-contents stage; and the three
+  abundance settings.
+- **Out:** for every planet, its deposits — each exactly one resource, with a
+  positive whole-number initial quantity and an initial yield in `0.1%`
+  increments. The completed home-system template is copied unchanged per player
+  (counts, quantities, and yields are not rerolled per player).
 
-How the engine currently produces the values above. This is an implementation
-detail: it is subject to change, draws no randomness, and does not yet consume the
-cluster's abundance settings.
-
-### Deposit counts by planet type
-
-The planet type fixes how many deposits of each resource it carries.
-
-| Planet type   | FUEL | METL | NMTL | Total deposits |
-|---------------|-----:|-----:|-----:|---------------:|
-| Rocky         |    1 |    1 |    1 |              3 |
-| Asteroid belt |    1 |    3 |    2 |              6 |
-| Gas giant     |    3 |    1 |    2 |              6 |
-
-### Quantity
-
-Every deposit on a planet starts at the same quantity: **100,000,000 divided by
-the total number of deposits on that planet, rounded up.**
-
-- Rocky (3 deposits): `⌈100,000,000 / 3⌉` = **33,333,334** each.
-- Asteroid belt / Gas giant (6 deposits): `⌈100,000,000 / 6⌉` = **16,666,667** each.
-
-### Yield percentage
-
-Each deposit's yield is set by its resource, then reduced by orbit and planet type.
-All halving rounds up (`⌈x / 2⌉`).
-
-1. Base yield: **FUEL 3%**, **METL 5%**, **NMTL 6%**.
-2. If the planet is in orbit **1, 2, 3, 8, 9, or 10**, halve the yield.
-3. If the planet is an **asteroid belt**, halve the yield again.
-
-Steps 2 and 3 are cumulative, so an asteroid belt in one of those orbits is halved
-twice:
-
-- **Orbit 4 (asteroid, not a halved orbit):** halved once — FUEL `⌈3/2⌉ = 2%`,
-  METL `⌈5/2⌉ = 3%`, NMTL `⌈6/2⌉ = 3%`.
-- **Orbit 9 (asteroid in a halved orbit):** halved twice — FUEL `⌈⌈3/2⌉/2⌉ = 1%`,
-  METL `⌈⌈5/2⌉/2⌉ = 2%`, NMTL `⌈⌈6/2⌉/2⌉ = 2%`.
-- **Orbit 8 (gas giant in a halved orbit):** halved once — FUEL 2%, METL 3%,
-  NMTL 3%.
+Because deposits consumes `(planet type, orbit)`, the system-contents output is the
+compatibility surface between the two stages — see
+[System generation](system-generation.md).
 
 ## Determinism
 
-The values draw **no randomness**: given planet type and orbit, every value above
-is fixed. The reserved per-system stream (`TagSystem`, keyed by `(q, r)` — see
-[System generation](system-generation.md)) is therefore still **unused**.
+Each Genesis stage draws from its **own seed root**, derived
+`Derive(stageTag, generatorID, version)`
+([ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)).
+The deposit stage has **no domain tag today** — the registry holds `TagCluster`,
+`TagSystem`, and `TagPlayer`. Whether deposits hang under `TagSystem` with a
+distinct generator id or take an appended `TagDeposit` is an **open implementation
+question for E1**; appending is free while no game exists, and the registry is
+append-only. The domain-tag registry and the key-path hash encoding stay globally
+frozen; a generator's internal addressing freezes per version, on its own
+schedule. See [`doc/determinism.md`](../determinism.md) and `internal/prng`.
 
 ## See also
 
-- [System generation](system-generation.md) — the fixed testbed layout these
-  deposits attach to, and the reserved per-system stream.
-- [`doc/determinism.md`](../determinism.md) — streams, key paths, frozen surfaces.
-- mdhender/ecv6-api#67 — E1 epic; the deposit blocker this addresses (pending
-  grounding).
+- [System generation](system-generation.md) — the prior stage, which emits the
+  planet types and orbits these deposits attach to.
+- [`doc/determinism.md`](../determinism.md) — streams, key paths, domain tags,
+  frozen surfaces.
+- [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md) —
+  the core/supplement split and per-generator seed roots.
+- [Genesis Deposits](https://github.com/mdhender/ecv6-docs/blob/main/content/reference/generators/genesis/deposits.md)
+  — the rules this stage implements.
