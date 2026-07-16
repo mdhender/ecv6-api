@@ -18,8 +18,8 @@ relative path — relative paths break when rendered on GitHub.
 | [control-and-ownership.md](control-and-ownership.md) | Who controls and owns what: account → player → controller → faction → asset, with cardinalities and the domain boundary |
 | [determinism.md](determinism.md) | The PRNG mechanism spec: seeds, streams, key paths, frozen surfaces, how to add a domain tag, golden vectors |
 | [counter-based-prng.md](counter-based-prng.md) | Why the determinism design looks the way it does — reasoning, prior art, trade-offs |
-| [reference/system-generation.md](reference/system-generation.md) | How the engine fills a system in the testbed: every system identical, the fixed per-orbit layout, the reserved per-system stream (extracted from the game docs) |
-| [reference/deposit-generation.md](reference/deposit-generation.md) | The deposits planets carry in the testbed: per-orbit and system-wide amounts, plus how they are derived (not yet grounded) |
+| [reference/system-generation.md](reference/system-generation.md) | How the engine will implement the Genesis System Contents generator: the stage seam and determinism, linking the upstream rules |
+| [reference/deposit-generation.md](reference/deposit-generation.md) | How the engine will implement the Genesis Deposits generator: the stage seam and determinism, linking the upstream rules |
 | [decisions/](decisions/) | ADRs — one file per hard-to-reverse decision |
 | [api/](api/) | The REST surface — spec-first [openapi.yaml](api/openapi.yaml) (application surface drafted; engine deferred), [conventions.md](api/conventions.md), and the [v4 gap analysis](api/v4-gap-analysis.md) |
 
