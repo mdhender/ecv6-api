@@ -5,7 +5,7 @@
 
 ## Context
 
-Cluster generation (phase E1, issue [#67](https://github.com/mdhender/ecv6-api/issues/67))
+Cluster generation (phase E1, issue [#90](https://github.com/mdhender/ecv6-api/issues/90))
 places `N` star systems on a hex map. Two settings shape the map: **number of
 systems** `N` and **stellar density** `D`. The placement algorithm — build the hex
 list within a radius, shuffle, draw, keep a hex only if it is at least the *minimum
