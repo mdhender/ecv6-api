@@ -19,10 +19,9 @@ const depositsGoldenPath = "testdata/deposits_golden.json"
 
 // depositsGolden is the on-disk shape of the frozen deposits fixture.
 type depositsGolden struct {
-	Seed1   uint64            `json:"seed1"`
-	Seed2   uint64            `json:"seed2"`
-	Systems []goldenSysDep    `json:"systems"`
-	Home    []goldenPlanetDep `json:"home"`
+	Seed1   uint64         `json:"seed1"`
+	Seed2   uint64         `json:"seed2"`
+	Systems []goldenSysDep `json:"systems"`
 }
 
 type goldenSysDep struct {
@@ -53,11 +52,10 @@ var depositsGoldenHexes = []genesis.Hex{
 }
 
 // TestGoldenDeposits pins the real PRNG-driven deposits output — every planet's
-// deposit resources, quantities, and yields, plus the home template's deposits —
-// for a fixed seed and a small fixed system set. This is the end-to-end
-// reproducibility contract for the deposits stage (seed root, per-(q, r)
-// addressing, phase order, tables, and the float64 pipeline). Regenerate with
-// -update and eyeball the diff.
+// deposit resources, quantities, and yields — for a fixed seed and a small fixed
+// system set. This is the end-to-end reproducibility contract for the deposits
+// stage (seed root, per-(q, r) addressing, phase order, tables, and the float64
+// pipeline). Regenerate with -update and eyeball the diff.
 func TestGoldenDeposits(t *testing.T) {
 	const s1, s2 uint64 = 0x0123456789abcdef, 0xfedcba9876543210
 
@@ -70,7 +68,6 @@ func TestGoldenDeposits(t *testing.T) {
 			Seed1:   s1,
 			Seed2:   s2,
 			Systems: toGoldenSysDep(res.Systems),
-			Home:    toGoldenPlanetDep(res.Home),
 		}
 		writeDepositsGolden(t, g)
 		t.Log("wrote", depositsGoldenPath)
@@ -84,7 +81,6 @@ func TestGoldenDeposits(t *testing.T) {
 	for i := range gotSystems {
 		assertSameSysDep(t, gotSystems[i], want.Systems[i])
 	}
-	assertSamePlanetDeps(t, "home", toGoldenPlanetDep(res.Home), want.Home)
 }
 
 func assertSameSysDep(t *testing.T, got, want goldenSysDep) {
@@ -147,14 +143,6 @@ func TestDepositsProperties(t *testing.T) {
 			for pi, pd := range sys.Planets {
 				checkPlanetDeposits(t, sys.Hex, contents.Systems[si].Planets[pi], pd)
 			}
-		}
-		// The home template always produces deposits (every planet has at least its
-		// high-affinity resource present).
-		if len(res.Home) != len(contents.Home) {
-			t.Fatalf("home has %d deposit-planets, %d content-planets", len(res.Home), len(contents.Home))
-		}
-		for pi, pd := range res.Home {
-			checkPlanetDeposits(t, genesis.Hex{}, contents.Home[pi], pd)
 		}
 	}
 }

@@ -50,17 +50,27 @@ func TestDepositsRoundTrip(t *testing.T) {
 			})
 		}
 	}
-	home := make([]HomePlanet, len(contents.Home))
-	for i, p := range contents.Home {
-		home[i] = HomePlanet{Orbit: p.Orbit, Type: string(p.Type), Habitability: p.Habitability}
+	// Genesis no longer generates a home template (ADR-0017: home systems are
+	// generated on demand at founding). The store's home_template /
+	// home_template_deposit tables are still live, so exercise their round-trip
+	// with fixed literals until the E1 §2 schema retirement removes them. The
+	// deposit orbits must match the home_template orbits (foreign key).
+	home := []HomePlanet{
+		{Orbit: 1, Type: "rocky", Habitability: 0},
+		{Orbit: 3, Type: "rocky", Habitability: 25},
 	}
 	if err := db.SaveSystemContents(ctx, SystemContents{GameID: gameID, Planets: planets, Home: home}); err != nil {
 		t.Fatalf("SaveSystemContents: %v", err)
 	}
 
-	// Generate and persist deposits.
+	// Generate and persist deposits. Genesis fills the ordinary systems; the home
+	// template's deposits are supplied as fixed literals alongside them.
 	depRes := genesis.GenerateDeposits(seeds, contents, genesis.DefaultDepositSettings())
 	want := depositsToStore(gameID, depRes)
+	want.Home = []HomeDeposit{
+		{Orbit: 1, DepositNo: 0, Resource: "mtls", InitialQuantity: 100, CurrentQuantity: 100, InitialYield: 120, CurrentYield: 120},
+		{Orbit: 3, DepositNo: 0, Resource: "fuel", InitialQuantity: 50, CurrentQuantity: 50, InitialYield: 50, CurrentYield: 50},
+	}
 	if err := db.SaveDeposits(ctx, want); err != nil {
 		t.Fatalf("SaveDeposits: %v", err)
 	}
@@ -210,7 +220,9 @@ func TestDepositSettingsRoundTrip(t *testing.T) {
 }
 
 // depositsToStore flattens a genesis DepositsResult into the store's Deposits,
-// with current == initial at generation.
+// with current == initial at generation. The home template is no longer part of
+// the genesis result (ADR-0017); callers supplying home deposits set d.Home
+// directly.
 func depositsToStore(gameID int64, res genesis.DepositsResult) Deposits {
 	d := Deposits{GameID: gameID}
 	for _, sys := range res.Systems {
@@ -223,16 +235,6 @@ func depositsToStore(gameID int64, res genesis.DepositsResult) Deposits {
 					InitialYield: dep.Yield, CurrentYield: dep.Yield,
 				})
 			}
-		}
-	}
-	for _, pd := range res.Home {
-		for i, dep := range pd.Deposits {
-			d.Home = append(d.Home, HomeDeposit{
-				Orbit: pd.Orbit, DepositNo: i,
-				Resource:        string(dep.Resource),
-				InitialQuantity: dep.Quantity, CurrentQuantity: dep.Quantity,
-				InitialYield: dep.Yield, CurrentYield: dep.Yield,
-			})
 		}
 	}
 	return d

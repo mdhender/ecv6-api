@@ -8,31 +8,15 @@ import (
 	"github.com/mdhender/ecv6-api/internal/prng"
 )
 
-// The Genesis System Contents generator's identity, addressed under TagSystem.
-// These pin the seed root Derive(TagSystem, SysContentsGeneratorID,
-// SysContentsVersion) that all system-contents randomness hangs off (ADR-0016).
-// They match the frozen (genID, version) = (1, 1) convention T1 pinned and T2
-// followed for placement. Below the root the generator owns its addressing.
+// The Genesis System Contents generator's provenance identity. Per ADR-0017
+// these are RECORDED PROVENANCE only — they no longer enter the seed path. The
+// system-contents seed root is Derive(TagSystem) alone; below it each system is
+// addressed by its (q, r). Kept as the integer generator/version handles the
+// store's game_generator row records (pending the UUID reconciliation in the E1
+// §3 generator rows).
 const (
 	SysContentsGeneratorID prng.Key = 1
 	SysContentsVersion     prng.Key = 1
-)
-
-// HomeTemplateQ and HomeTemplateR are a fixed sentinel (q, r) address for the
-// home-system template, deliberately placed OUTSIDE any legal cluster radius so
-// it can never collide with a real system's address (issue #79, decision 1). A
-// real system at (q, r) addresses its per-system stream as
-// root.Roller(Key(q), Key(r)); a hex within radius R has |q|, |r| <= R, and the
-// largest radius Genesis Placement produces is far below 1<<30, so this address
-// is unreachable by any placed system.
-//
-// The System Contents stage itself makes NO home-template draws — the template
-// is fixed (see HomeTemplate). The address is reserved and documented here so
-// the deposit stage (T4) can roll the template's deposits off it without
-// colliding with any ordinary system.
-const (
-	HomeTemplateQ prng.Key = 1 << 30
-	HomeTemplateR prng.Key = 1 << 30
 )
 
 // Habitability is clamped to this inclusive range in the base step (Genesis
@@ -80,12 +64,12 @@ type SystemContents struct {
 }
 
 // ContentsResult is the output of the Genesis System Contents stage: every
-// ordinary system's contents (in the same order as the placed systems handed
-// in) and the fixed home-system template. This is the compatibility surface the
-// deposit stage consumes (ADR-0016).
+// ordinary system's contents, in the same order as the placed systems handed in.
+// This is the compatibility surface the deposit stage consumes (ADR-0016). There
+// is no home-system template: home systems are generated on demand at founding
+// (ADR-0017), not produced here.
 type ContentsResult struct {
 	Systems []SystemContents
-	Home    []Planet
 }
 
 // orbitSpec is one row of the per-orbit planet/habitability table: the planet
@@ -116,45 +100,25 @@ var orbitTable = [11]orbitSpec{
 	10: {AsteroidBelt, 0, 0, 0},
 }
 
-// HomeTemplate returns the fixed home-system template: the same ten planets for
-// every player, with no random rolls (Genesis System Contents, "Home-system
-// template"). This stage guarantees only the home planets' types, orbits, and
-// habitability; deposits come from a later stage, and the per-player copy is a
-// later step. A fresh slice is returned on each call so callers may mutate it.
-func HomeTemplate() []Planet {
-	return []Planet{
-		{Orbit: 1, Type: Rocky, Habitability: 0},
-		{Orbit: 2, Type: Rocky, Habitability: 3},
-		{Orbit: 3, Type: Rocky, Habitability: 25},
-		{Orbit: 4, Type: AsteroidBelt, Habitability: 0},
-		{Orbit: 5, Type: Rocky, Habitability: 15},
-		{Orbit: 6, Type: GasGiant, Habitability: 10},
-		{Orbit: 7, Type: GasGiant, Habitability: 0},
-		{Orbit: 8, Type: GasGiant, Habitability: 0},
-		{Orbit: 9, Type: Rocky, Habitability: 4},
-		{Orbit: 10, Type: AsteroidBelt, Habitability: 0},
-	}
-}
-
 // GenerateContents runs the Genesis System Contents stage against a game's seeds
 // and the placed systems from placement (PlacementResult.Systems), returning
-// every ordinary system's contents plus the fixed home-system template. It is a
-// pure function of (seeds, placed): each system's contents depend only on the
-// game seeds and the system's own (q, r), never on another system or on the
-// order they are processed. It does not persist anything.
+// every ordinary system's contents. It is a pure function of (seeds, placed):
+// each system's contents depend only on the game seeds and the system's own
+// (q, r), never on another system or on the order they are processed. It does not
+// persist anything.
 //
 // Each system draws from one stream addressed by its (q, r) below the stage seed
-// root Derive(TagSystem, SysContentsGeneratorID, SysContentsVersion), in the
-// documented draw order: planet count, then the orbit shuffle (only for 4+
-// planets), then habitability per occupied orbit in ascending orbit order. See
-// the supplement.
+// root Derive(TagSystem) — generator id/version are provenance, not entropy
+// (ADR-0017) — in the documented draw order: planet count, then the orbit shuffle
+// (only for 4+ planets), then habitability per occupied orbit in ascending orbit
+// order. See the supplement.
 func GenerateContents(seeds prng.Seeds, placed []Hex) ContentsResult {
-	root := seeds.Derive(prng.TagSystem, SysContentsGeneratorID, SysContentsVersion)
+	root := seeds.Derive(prng.TagSystem)
 	systems := make([]SystemContents, len(placed))
 	for i, hex := range placed {
 		systems[i] = generateSystem(root, hex)
 	}
-	return ContentsResult{Systems: systems, Home: HomeTemplate()}
+	return ContentsResult{Systems: systems}
 }
 
 // generateSystem generates one ordinary system's contents from the stage seed

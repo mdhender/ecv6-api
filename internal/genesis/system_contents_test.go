@@ -17,44 +17,6 @@ import (
 
 const contentsGoldenPath = "testdata/system_contents_golden.json"
 
-// TestHomeTemplateGolden pins the fixed home-system template to the supplement's
-// exact table. The template makes no rolls and is identical for every player;
-// this is the reproducibility contract for it.
-func TestHomeTemplateGolden(t *testing.T) {
-	want := []genesis.Planet{
-		{Orbit: 1, Type: genesis.Rocky, Habitability: 0},
-		{Orbit: 2, Type: genesis.Rocky, Habitability: 3},
-		{Orbit: 3, Type: genesis.Rocky, Habitability: 25},
-		{Orbit: 4, Type: genesis.AsteroidBelt, Habitability: 0},
-		{Orbit: 5, Type: genesis.Rocky, Habitability: 15},
-		{Orbit: 6, Type: genesis.GasGiant, Habitability: 10},
-		{Orbit: 7, Type: genesis.GasGiant, Habitability: 0},
-		{Orbit: 8, Type: genesis.GasGiant, Habitability: 0},
-		{Orbit: 9, Type: genesis.Rocky, Habitability: 4},
-		{Orbit: 10, Type: genesis.AsteroidBelt, Habitability: 0},
-	}
-	got := genesis.HomeTemplate()
-	if len(got) != len(want) {
-		t.Fatalf("home template has %d planets, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("home template orbit %d = %+v, want %+v", want[i].Orbit, got[i], want[i])
-		}
-	}
-
-	// GenerateContents must return the same template regardless of the systems.
-	res := genesis.GenerateContents(prng.New(1, 2), []genesis.Hex{{Q: 0, R: 0}})
-	if len(res.Home) != len(want) {
-		t.Fatalf("GenerateContents home has %d planets, want %d", len(res.Home), len(want))
-	}
-	for i := range want {
-		if res.Home[i] != want[i] {
-			t.Errorf("GenerateContents home orbit %d = %+v, want %+v", want[i].Orbit, res.Home[i], want[i])
-		}
-	}
-}
-
 // contentsGolden is the on-disk shape of the frozen system-contents fixture.
 type contentsGolden struct {
 	Seed1   uint64           `json:"seed1"`
