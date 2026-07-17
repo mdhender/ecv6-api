@@ -36,18 +36,22 @@ const (
 	RichResource    Abundance = "rich"
 )
 
-// PlacementKnobs are the knobs the cluster/map layer reads.
+// PlacementKnobs are the knobs the cluster/map layer reads. The JSON tags are the
+// stored shape recorded in game_generator.settings for the placement stage
+// (ADR-0016: a game records the resolved knobs it ran).
 type PlacementKnobs struct {
-	Count   SystemCount
-	Density Density
-	Spacing Spacing
+	Count   SystemCount `json:"count"`
+	Density Density     `json:"density"`
+	Spacing Spacing     `json:"spacing"`
 }
 
-// DepositKnobs are the per-resource abundance knobs the deposit layer reads.
+// DepositKnobs are the per-resource abundance knobs the deposit layer reads. The
+// JSON tags (keyed by the resource codes) are the stored shape recorded in
+// game_generator.settings for the deposits stage.
 type DepositKnobs struct {
-	Fuel      Abundance
-	Metals    Abundance
-	NonMetals Abundance
+	Fuel      Abundance `json:"fuel"`
+	Metals    Abundance `json:"mtls"`
+	NonMetals Abundance `json:"nmtl"`
 }
 
 // Knobs is the "MetaKnob": every layer's knobs in one value. A generator uses the
