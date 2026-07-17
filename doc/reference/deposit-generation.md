@@ -20,14 +20,16 @@ Never restate the rules here; link them. This page is engine mechanism and the
 stage seam. See [`doc/README.md`](../README.md).
 
 > **Implemented.** The generator lives in `internal/genesis` (`GenerateDeposits`,
-> `DepositSettings`), backed by the `deposit` and `home_template_deposit` tables
-> (`store.SaveDeposits` / `store.GetDeposits`). The rules are grounded upstream
-> (CLAUDE.md rule 3) in the Genesis Deposits supplement, resolved by
+> `DepositSettings`), backed by the `deposit` table (`store.SaveDeposits` /
+> `store.GetDeposits`). The rules are grounded upstream (CLAUDE.md rule 3) in the
+> Genesis Deposits supplement, resolved by
 > [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md).
 > The `Af/Am/An` endowments default to `4,891,250,000`; GM entry of custom values
-> is future work. The per-player home-system copy (E2) is out of scope here — the
-> home template's deposits are generated once. This page describes the engine
-> mechanism; the rules stay upstream.
+> is future work. There is no home-system template
+> ([ADR-0017](../decisions/adr-0017-generator-identity-and-home-system-generation.md)):
+> a home system's deposits are ordinary `deposit` rows for its chosen `(q, r)`,
+> produced on demand at founding (E3). This page describes the engine mechanism;
+> the rules stay upstream.
 
 ## Deposits are stochastic and consume the abundance settings
 
@@ -49,13 +51,11 @@ Generation is staged and each stage's generator is chosen independently
 ([ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)).
 Deposits runs **last**, after system contents:
 
-- **In:** `(planet type, orbit)` for every planet of every ordinary system, plus
-  the fixed home-system template, from the system-contents stage; and the three
-  abundance settings.
+- **In:** `(planet type, orbit)` for every planet of every ordinary system, from
+  the system-contents stage; and the three abundance settings.
 - **Out:** for every planet, its deposits — each exactly one resource, with a
   positive whole-number initial quantity and an initial yield in `0.1%`
-  increments. The completed home-system template is copied unchanged per player
-  (counts, quantities, and yields are not rerolled per player).
+  increments.
 
 Because deposits consumes `(planet type, orbit)`, the system-contents output is the
 compatibility surface between the two stages — see
@@ -63,16 +63,14 @@ compatibility surface between the two stages — see
 
 ## Determinism
 
-Each Genesis stage draws from its **own seed root**, derived
-`Derive(stageTag, generatorID, version)`
-([ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md)).
-Deposits root at `Derive(TagDeposit, DepositsGeneratorID, DepositsVersion)` with
-`(generatorID, version) = (1, 1)`. `TagDeposit` (`4`) is the appended domain tag
-the registry now carries alongside `TagCluster`, `TagSystem`, and `TagPlayer`.
-Each ordinary system draws its deposits from one `Roller` at
-`root.Roller(Key(q), Key(r))`; the home-system template draws from
-`root.Roller(HomeTemplateQ, HomeTemplateR)`, the fixed sentinel address from the
-system-contents stage. Within a system the seven phases are drawn strictly in the
+Each Genesis stage draws from its **own seed root**, derived `Derive(stageTag)`
+([ADR-0017](../decisions/adr-0017-generator-identity-and-home-system-generation.md)
+amends [ADR-0016](../decisions/adr-0016-core-rulebook-and-generator-supplements.md):
+generator id and version are recorded provenance, not seed inputs). Deposits root
+at `Derive(TagDeposit)`. `TagDeposit` (`4`) is the appended domain tag the registry
+now carries alongside `TagCluster`, `TagSystem`, and `TagPlayer`. Each ordinary
+system draws its deposits from one `Roller` at `root.Roller(Key(q), Key(r))`.
+Within a system the seven phases are drawn strictly in the
 documented order — each phase completed system-wide before the next — addressing
 planets and resources by their deterministic order, never by Go-map iteration
 order. The domain-tag registry and the key-path hash encoding stay globally

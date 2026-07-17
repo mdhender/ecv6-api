@@ -12,8 +12,8 @@ import (
 )
 
 // TestSystemContentsRoundTrip generates a cluster and its contents with the real
-// generators, persists the planets and home template, reloads them, and asserts
-// they match — the persistence contract for the system-contents stage.
+// generators, persists the planets, reloads them, and asserts they match — the
+// persistence contract for the system-contents stage.
 func TestSystemContentsRoundTrip(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -50,18 +50,7 @@ func TestSystemContentsRoundTrip(t *testing.T) {
 			})
 		}
 	}
-	// Genesis no longer generates a home template (ADR-0017: home systems are
-	// generated on demand at founding). The store's home_template table is still
-	// live, though, so exercise its round-trip with a fixed literal until the E1
-	// §2 schema retirement removes the table.
-	home := []HomePlanet{
-		{Orbit: 1, Type: "rocky", Habitability: 0},
-		{Orbit: 3, Type: "rocky", Habitability: 25},
-		{Orbit: 4, Type: "asteroid belt", Habitability: 0},
-		{Orbit: 6, Type: "gas giant", Habitability: 10},
-	}
-
-	want := SystemContents{GameID: gameID, Planets: planets, Home: home}
+	want := SystemContents{GameID: gameID, Planets: planets}
 	if err := db.SaveSystemContents(ctx, want); err != nil {
 		t.Fatalf("SaveSystemContents: %v", err)
 	}
@@ -87,16 +76,6 @@ func TestSystemContentsRoundTrip(t *testing.T) {
 			t.Errorf("loaded unexpected planet %+v", p)
 		}
 	}
-
-	// Home template round-trips exactly, ordered by orbit.
-	if len(got.Home) != len(want.Home) {
-		t.Fatalf("loaded %d home planets, want %d", len(got.Home), len(want.Home))
-	}
-	for i := range want.Home {
-		if got.Home[i] != want.Home[i] {
-			t.Errorf("home orbit %d = %+v, want %+v", want.Home[i].Orbit, got.Home[i], want.Home[i])
-		}
-	}
 }
 
 // TestSaveSystemContentsConflict confirms saving the same planet twice violates
@@ -117,7 +96,6 @@ func TestSaveSystemContentsConflict(t *testing.T) {
 	c := SystemContents{
 		GameID:  gameID,
 		Planets: []Planet{{Q: 0, R: 0, Orbit: 4, Type: "asteroid belt", Habitability: 0}},
-		Home:    []HomePlanet{{Orbit: 1, Type: "rocky", Habitability: 0}},
 	}
 	if err := db.SaveSystemContents(ctx, c); err != nil {
 		t.Fatalf("first SaveSystemContents: %v", err)
@@ -155,5 +133,73 @@ func TestGetSystemContentsNotFound(t *testing.T) {
 
 	if _, err := db.GetSystemContents(ctx, gameID); !errors.Is(err, ErrRecordNotFound) {
 		t.Errorf("GetSystemContents on empty game = %v, want ErrRecordNotFound", err)
+	}
+}
+
+// TestSystemContentsGeneratorOverride exercises the per-system contents-provenance
+// surface (ADR-0017 §3): no overrides after cluster generation, then a founding
+// home overwrite records one, and re-running it replaces the row.
+func TestSystemContentsGeneratorOverride(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := newTestDB(t)
+	gameID := seedGame(t, db, "contents-provenance")
+
+	// Two placed systems for the overrides to reference.
+	if err := db.SaveCluster(ctx, Cluster{
+		GameID: gameID, Radius: 5, N: 10, Density: "average", Spacing: 2,
+		Systems: []System{{Q: 0, R: 0}, {Q: 1, R: -1}},
+	}); err != nil {
+		t.Fatalf("SaveCluster: %v", err)
+	}
+
+	// A freshly generated cluster has no overrides — every system used the stage
+	// generator, so the table is empty and that is not an error.
+	got, err := db.GetSystemContentsGenerators(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetSystemContentsGenerators (empty): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("fresh game has %d overrides, want 0", len(got))
+	}
+
+	// A founding home overwrite of (0,0) records a per-system override.
+	ov := SystemContentsGenerator{GameID: gameID, Q: 0, R: 0, GeneratorID: 7, Version: 2}
+	if err := db.PutSystemContentsGenerator(ctx, ov); err != nil {
+		t.Fatalf("PutSystemContentsGenerator: %v", err)
+	}
+	got, err = db.GetSystemContentsGenerators(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetSystemContentsGenerators: %v", err)
+	}
+	if len(got) != 1 || got[0] != ov {
+		t.Fatalf("overrides = %+v, want [%+v]", got, ov)
+	}
+
+	// Re-running the overwrite (same (q,r)) replaces the row rather than conflicting.
+	ov2 := SystemContentsGenerator{GameID: gameID, Q: 0, R: 0, GeneratorID: 9, Version: 3}
+	if err := db.PutSystemContentsGenerator(ctx, ov2); err != nil {
+		t.Fatalf("PutSystemContentsGenerator (replace): %v", err)
+	}
+	got, err = db.GetSystemContentsGenerators(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetSystemContentsGenerators (after replace): %v", err)
+	}
+	if len(got) != 1 || got[0] != ov2 {
+		t.Errorf("overrides after replace = %+v, want [%+v]", got, ov2)
+	}
+}
+
+// TestPutSystemContentsGeneratorUnknownSystem confirms an override for a system
+// that was never placed is rejected by the foreign key as ErrConflict.
+func TestPutSystemContentsGeneratorUnknownSystem(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := newTestDB(t)
+	gameID := seedGame(t, db, "provenance-fk")
+
+	ov := SystemContentsGenerator{GameID: gameID, Q: 42, R: 42, GeneratorID: 1, Version: 1}
+	if err := db.PutSystemContentsGenerator(ctx, ov); !errors.Is(err, ErrConflict) {
+		t.Errorf("PutSystemContentsGenerator for unknown system = %v, want ErrConflict", err)
 	}
 }

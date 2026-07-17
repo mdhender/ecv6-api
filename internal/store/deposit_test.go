@@ -28,7 +28,7 @@ func TestDepositsRoundTrip(t *testing.T) {
 		t.Fatalf("Place: %v", err)
 	}
 
-	// Persist cluster/systems, then planets/home template, so deposit FKs resolve.
+	// Persist cluster/systems, then planets, so deposit FKs resolve.
 	systems := make([]System, len(placement.Systems))
 	for i, h := range placement.Systems {
 		systems[i] = System{Q: h.Q, R: h.R}
@@ -50,27 +50,14 @@ func TestDepositsRoundTrip(t *testing.T) {
 			})
 		}
 	}
-	// Genesis no longer generates a home template (ADR-0017: home systems are
-	// generated on demand at founding). The store's home_template /
-	// home_template_deposit tables are still live, so exercise their round-trip
-	// with fixed literals until the E1 §2 schema retirement removes them. The
-	// deposit orbits must match the home_template orbits (foreign key).
-	home := []HomePlanet{
-		{Orbit: 1, Type: "rocky", Habitability: 0},
-		{Orbit: 3, Type: "rocky", Habitability: 25},
-	}
-	if err := db.SaveSystemContents(ctx, SystemContents{GameID: gameID, Planets: planets, Home: home}); err != nil {
+	if err := db.SaveSystemContents(ctx, SystemContents{GameID: gameID, Planets: planets}); err != nil {
 		t.Fatalf("SaveSystemContents: %v", err)
 	}
 
-	// Generate and persist deposits. Genesis fills the ordinary systems; the home
-	// template's deposits are supplied as fixed literals alongside them.
+	// Generate and persist deposits. Genesis fills the ordinary systems; there is
+	// no home template (ADR-0017).
 	depRes := genesis.GenerateDeposits(seeds, contents, genesis.DefaultDepositSettings())
 	want := depositsToStore(gameID, depRes)
-	want.Home = []HomeDeposit{
-		{Orbit: 1, DepositNo: 0, Resource: "mtls", InitialQuantity: 100, CurrentQuantity: 100, InitialYield: 120, CurrentYield: 120},
-		{Orbit: 3, DepositNo: 0, Resource: "fuel", InitialQuantity: 50, CurrentQuantity: 50, InitialYield: 50, CurrentYield: 50},
-	}
 	if err := db.SaveDeposits(ctx, want); err != nil {
 		t.Fatalf("SaveDeposits: %v", err)
 	}
@@ -99,16 +86,6 @@ func TestDepositsRoundTrip(t *testing.T) {
 			t.Errorf("deposit %+v: current != initial at generation", d)
 		}
 	}
-
-	// Home template deposits round-trip exactly, ordered by (orbit, deposit_no).
-	if len(got.Home) != len(want.Home) {
-		t.Fatalf("loaded %d home deposits, want %d", len(got.Home), len(want.Home))
-	}
-	for i := range want.Home {
-		if got.Home[i] != want.Home[i] {
-			t.Errorf("home deposit %d = %+v, want %+v", i, got.Home[i], want.Home[i])
-		}
-	}
 }
 
 // TestSaveDepositsConflict confirms saving the same deposit twice violates the
@@ -128,7 +105,6 @@ func TestSaveDepositsConflict(t *testing.T) {
 	if err := db.SaveSystemContents(ctx, SystemContents{
 		GameID:  gameID,
 		Planets: []Planet{{Q: 0, R: 0, Orbit: 4, Type: "asteroid belt", Habitability: 0}},
-		Home:    []HomePlanet{{Orbit: 1, Type: "rocky", Habitability: 0}},
 	}); err != nil {
 		t.Fatalf("SaveSystemContents: %v", err)
 	}
@@ -138,10 +114,6 @@ func TestSaveDepositsConflict(t *testing.T) {
 		Deposits: []Deposit{{
 			Q: 0, R: 0, Orbit: 4, DepositNo: 0, Resource: "mtls",
 			InitialQuantity: 100, CurrentQuantity: 100, InitialYield: 120, CurrentYield: 120,
-		}},
-		Home: []HomeDeposit{{
-			Orbit: 1, DepositNo: 0, Resource: "fuel",
-			InitialQuantity: 50, CurrentQuantity: 50, InitialYield: 50, CurrentYield: 50,
 		}},
 	}
 	if err := db.SaveDeposits(ctx, d); err != nil {
@@ -220,9 +192,7 @@ func TestDepositSettingsRoundTrip(t *testing.T) {
 }
 
 // depositsToStore flattens a genesis DepositsResult into the store's Deposits,
-// with current == initial at generation. The home template is no longer part of
-// the genesis result (ADR-0017); callers supplying home deposits set d.Home
-// directly.
+// with current == initial at generation.
 func depositsToStore(gameID int64, res genesis.DepositsResult) Deposits {
 	d := Deposits{GameID: gameID}
 	for _, sys := range res.Systems {

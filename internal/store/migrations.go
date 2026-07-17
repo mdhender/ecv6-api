@@ -152,10 +152,15 @@ CREATE TABLE game_generator (
 )`
 
 // migration0005 lays down the system-contents stage's output: the planets that
-// occupy each system's orbits, plus the fixed home-system template. Like the
+// occupy each system's orbits, plus per-system contents provenance. Like the
 // placement tables (migration0004) this is start-of-life state, decided once at
 // setup and immutable thereafter (the cluster core reference), so it carries no
 // turn axis and no soft-delete flag — regenerating during alpha replaces the rows.
+//
+// There is no home-system template (ADR-0017): a home system is ordinary planet /
+// deposit rows for a chosen (q, r), produced on demand at founding by a
+// home-system generator. The retired home_template / home_template_deposit tables
+// are squashed out here rather than migrated (alpha data is disposable, CLAUDE.md).
 //
 // Grounding: the schema and vocabulary (ten orbits, planet types, per-planet
 // habitability) are the cluster core reference; which planet occupies which orbit
@@ -166,9 +171,12 @@ CREATE TABLE game_generator (
 //     (game_id, q, r) and its orbit. Empty orbits carry NO row. type and orbit are
 //     schema (constrained by CHECK); habitability is the generator's per-planet
 //     value, in 0..25. It references the system it belongs to via (game_id, q, r).
-//   - home_template — the one fixed home-system template per game, keyed by orbit.
-//     The template is generated once; the per-player copy onto a chosen system is a
-//     later step and does not touch this table.
+//   - system_contents_generator — per-system contents provenance (ADR-0017 §3): the
+//     generator that produced a system's contents WHEN it differs from the
+//     game-level system_contents stage default recorded in game_generator. A row is
+//     an override, keyed by (game_id, q, r): cluster generation writes none (every
+//     system uses the stage generator); a founding home overwrite writes one for the
+//     rebuilt (q, r). generator_id / version mirror game_generator's columns.
 const migration0005 = `
 CREATE TABLE planet (
     game_id      INTEGER NOT NULL,
@@ -182,21 +190,25 @@ CREATE TABLE planet (
     FOREIGN KEY (game_id, q, r) REFERENCES system (game_id, q, r)
 );
 
-CREATE TABLE home_template (
-    game_id      INTEGER NOT NULL REFERENCES games (id),
-    orbit        INTEGER NOT NULL CHECK (orbit BETWEEN 1 AND 10),
-    type         TEXT    NOT NULL
-                 CHECK (type IN ('rocky', 'asteroid belt', 'gas giant')),
-    habitability INTEGER NOT NULL CHECK (habitability BETWEEN 0 AND 25),
-    PRIMARY KEY (game_id, orbit)
+CREATE TABLE system_contents_generator (
+    game_id      INTEGER NOT NULL,
+    q            INTEGER NOT NULL,                 -- axial coordinate of the system
+    r            INTEGER NOT NULL,                 -- axial coordinate of the system
+    generator_id INTEGER NOT NULL,                -- generator that produced this system's contents
+    version      INTEGER NOT NULL,                -- its version (immutable once a game depends on it)
+    PRIMARY KEY (game_id, q, r),
+    FOREIGN KEY (game_id, q, r) REFERENCES system (game_id, q, r)
 )`
 
 // migration0006 lays down the deposits stage's output: the natural-resource
-// deposits on each planet of each system, and on each orbit of the fixed
-// home-system template. Like the earlier generation tables this is start-of-life
-// state, decided once at setup; but a deposit's quantity and yield DO change
-// during play, so each carries an initial value (frozen at generation) and a
-// current value (mutated by play), which are equal at generation.
+// deposits on each planet of each system. Like the earlier generation tables this
+// is start-of-life state, decided once at setup; but a deposit's quantity and
+// yield DO change during play, so each carries an initial value (frozen at
+// generation) and a current value (mutated by play), which are equal at generation.
+//
+// There is no home-system template deposit table (ADR-0017): a home system's
+// deposits are ordinary deposit rows for its chosen (q, r), produced on demand at
+// founding. The retired home_template_deposit table is squashed out here.
 //
 // Grounding: the schema and vocabulary (three resources, each deposit a quantity
 // and a yield) are the cluster core reference; which resources occur and each
@@ -211,10 +223,6 @@ CREATE TABLE home_template (
 //     42 means 4.2% — so yields are always a whole multiple of 0.1% and at least
 //     0.1% (the minimum the generator guarantees). It references the planet it
 //     belongs to via (game_id, q, r, orbit).
-//   - home_template_deposit — the home-system template's deposits, keyed by orbit
-//     and deposit_no, referencing home_template. The template is generated once;
-//     the per-player copy onto a chosen system is a later step and does not touch
-//     these tables.
 const migration0006 = `
 CREATE TABLE deposit (
     game_id          INTEGER NOT NULL,
@@ -230,18 +238,4 @@ CREATE TABLE deposit (
     current_yield    INTEGER NOT NULL CHECK (current_yield >= 1), -- tenths of a percent
     PRIMARY KEY (game_id, q, r, orbit, deposit_no),
     FOREIGN KEY (game_id, q, r, orbit) REFERENCES planet (game_id, q, r, orbit)
-);
-
-CREATE TABLE home_template_deposit (
-    game_id          INTEGER NOT NULL,
-    orbit            INTEGER NOT NULL CHECK (orbit BETWEEN 1 AND 10),
-    deposit_no       INTEGER NOT NULL,                 -- per-orbit creation-order index (0-based)
-    resource         TEXT    NOT NULL
-                     CHECK (resource IN ('fuel', 'mtls', 'nmtl')),
-    initial_quantity INTEGER NOT NULL CHECK (initial_quantity >= 1),
-    current_quantity INTEGER NOT NULL CHECK (current_quantity >= 1),
-    initial_yield    INTEGER NOT NULL CHECK (initial_yield >= 1),
-    current_yield    INTEGER NOT NULL CHECK (current_yield >= 1),
-    PRIMARY KEY (game_id, orbit, deposit_no),
-    FOREIGN KEY (game_id, orbit) REFERENCES home_template (game_id, orbit)
 )`
