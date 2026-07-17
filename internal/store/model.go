@@ -63,6 +63,20 @@ type Game struct {
 	IsActive    bool
 }
 
+// EngineState is a game's engine-owned root state — the row of game_engine_state,
+// kept separate from the application-domain Game so the two domains stay separate
+// (ADR-0013). Seed1/Seed2 are the two uint64 master seeds that root all
+// determinism (doc/determinism.md, internal/prng); SQLite has no unsigned type, so
+// the accessors store and read the uint64 bit pattern via an INTEGER and the sign
+// is meaningless. Seeds are assigned at setup time, not game creation. CurrentTurn
+// is the engine clock: 0 is setup, play starts at 1.
+type EngineState struct {
+	GameID      int64
+	Seed1       uint64
+	Seed2       uint64
+	CurrentTurn int
+}
+
 // Member is one seat in a game's roster — a row of game_account_role, the
 // boundary table between the two domains (doc/control-and-ownership.md). PlayerID
 // is the game-side key (sequential within GameID, never reused); AccountID links
