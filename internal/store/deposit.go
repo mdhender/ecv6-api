@@ -13,7 +13,9 @@ import (
 // Deposit is one natural-resource deposit on a planet, the deposits stage's
 // output (Genesis Deposits; see internal/genesis). It is addressed by its
 // planet's (q, r) and orbit and a per-planet creation-order index DepositNo
-// (0-based). Resource is one of 'fuel', 'mtls', or 'nmtl'. Quantities are
+// (1-based). The index is the generator's deterministic creation order, so it is
+// reproducible from the game seeds (not a store-assigned id, which would not be).
+// Resource is one of 'fuel', 'mtls', or 'nmtl'. Quantities are
 // positive whole numbers; yields are stored in tenths of a percentage point
 // (InitialYield == 42 means 4.2%). At generation the current values equal the
 // initial values; play may later change the current values.

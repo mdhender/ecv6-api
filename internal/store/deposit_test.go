@@ -112,7 +112,7 @@ func TestSaveDepositsConflict(t *testing.T) {
 	d := Deposits{
 		GameID: gameID,
 		Deposits: []Deposit{{
-			Q: 0, R: 0, Orbit: 4, DepositNo: 0, Resource: "mtls",
+			Q: 0, R: 0, Orbit: 4, DepositNo: 1, Resource: "mtls",
 			InitialQuantity: 100, CurrentQuantity: 100, InitialYield: 120, CurrentYield: 120,
 		}},
 	}
@@ -135,12 +135,45 @@ func TestSaveDepositUnknownPlanet(t *testing.T) {
 	d := Deposits{
 		GameID: gameID,
 		Deposits: []Deposit{{
-			Q: 99, R: 99, Orbit: 4, DepositNo: 0, Resource: "mtls",
+			Q: 99, R: 99, Orbit: 4, DepositNo: 1, Resource: "mtls",
 			InitialQuantity: 100, CurrentQuantity: 100, InitialYield: 120, CurrentYield: 120,
 		}},
 	}
 	if err := db.SaveDeposits(ctx, d); !errors.Is(err, ErrConflict) {
 		t.Errorf("SaveDeposits with unknown planet = %v, want ErrConflict", err)
+	}
+}
+
+// TestSaveDepositRejectsZeroDepositNo confirms deposit_no is 1-based: a 0 (the old
+// 0-based convention, or an unset field) violates the CHECK and returns ErrConflict.
+func TestSaveDepositRejectsZeroDepositNo(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := newTestDB(t)
+	gameID := seedGame(t, db, "deposits-zero")
+
+	if err := db.SaveCluster(ctx, Cluster{
+		GameID: gameID, Radius: 5, N: 10, Density: "average", Spacing: 2,
+		Systems: []System{{Q: 0, R: 0}},
+	}); err != nil {
+		t.Fatalf("SaveCluster: %v", err)
+	}
+	if err := db.SaveSystemContents(ctx, SystemContents{
+		GameID:  gameID,
+		Planets: []Planet{{Q: 0, R: 0, Orbit: 4, Type: "asteroid belt", Habitability: 0}},
+	}); err != nil {
+		t.Fatalf("SaveSystemContents: %v", err)
+	}
+
+	d := Deposits{
+		GameID: gameID,
+		Deposits: []Deposit{{
+			Q: 0, R: 0, Orbit: 4, DepositNo: 0, Resource: "mtls",
+			InitialQuantity: 100, CurrentQuantity: 100, InitialYield: 120, CurrentYield: 120,
+		}},
+	}
+	if err := db.SaveDeposits(ctx, d); !errors.Is(err, ErrConflict) {
+		t.Errorf("SaveDeposits with deposit_no 0 = %v, want ErrConflict", err)
 	}
 }
 
@@ -192,14 +225,14 @@ func TestDepositSettingsRoundTrip(t *testing.T) {
 }
 
 // depositsToStore flattens a genesis DepositsResult into the store's Deposits,
-// with current == initial at generation.
+// with current == initial at generation and DepositNo a 1-based per-planet index.
 func depositsToStore(gameID int64, res genesis.DepositsResult) Deposits {
 	d := Deposits{GameID: gameID}
 	for _, sys := range res.Systems {
 		for _, pd := range sys.Planets {
 			for i, dep := range pd.Deposits {
 				d.Deposits = append(d.Deposits, Deposit{
-					Q: sys.Hex.Q, R: sys.Hex.R, Orbit: pd.Orbit, DepositNo: i,
+					Q: sys.Hex.Q, R: sys.Hex.R, Orbit: pd.Orbit, DepositNo: i + 1,
 					Resource:        string(dep.Resource),
 					InitialQuantity: dep.Quantity, CurrentQuantity: dep.Quantity,
 					InitialYield: dep.Yield, CurrentYield: dep.Yield,

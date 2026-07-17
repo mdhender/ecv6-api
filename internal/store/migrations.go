@@ -217,7 +217,10 @@ CREATE TABLE system_contents_generator (
 //
 //   - deposit — one row per deposit of an occupied orbit, keyed by the planet's
 //     (game_id, q, r, orbit) and a per-planet creation-order index deposit_no
-//     (0-based). resource is one of the three codes; a deposit is exactly one
+//     (1-based). deposit_no is assigned by the generator's deterministic creation
+//     order, so it is reproducible from the game seeds — a store-assigned surrogate
+//     id would not be, and would break the determinism guarantee. resource is one
+//     of the three codes; a deposit is exactly one
 //     resource. initial/current_quantity are positive whole numbers.
 //     initial/current_yield are stored as INTEGER tenths of a percentage point —
 //     42 means 4.2% — so yields are always a whole multiple of 0.1% and at least
@@ -229,7 +232,7 @@ CREATE TABLE deposit (
     q                INTEGER NOT NULL,                 -- axial coordinate of the system
     r                INTEGER NOT NULL,                 -- axial coordinate of the system
     orbit            INTEGER NOT NULL CHECK (orbit BETWEEN 1 AND 10),
-    deposit_no       INTEGER NOT NULL,                 -- per-planet creation-order index (0-based)
+    deposit_no       INTEGER NOT NULL CHECK (deposit_no >= 1), -- per-planet creation-order index (1-based)
     resource         TEXT    NOT NULL
                      CHECK (resource IN ('fuel', 'mtls', 'nmtl')),
     initial_quantity INTEGER NOT NULL CHECK (initial_quantity >= 1),
