@@ -1,6 +1,6 @@
 # ADR-0017: Generator identity is provenance, not entropy; home systems are generated on demand
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-07-17
 - **Amends:** [ADR-0016](adr-0016-core-rulebook-and-generator-supplements.md)
 
