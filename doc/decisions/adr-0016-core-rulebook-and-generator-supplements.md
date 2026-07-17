@@ -2,6 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-07-15
+- **Amended by:** [ADR-0017](adr-0017-generator-identity-and-home-system-generation.md) — generator identity/version leave the derived seed root (they become provenance only); the home-system template is retired in favour of an on-demand home-system generator.
 
 ## Context
 
