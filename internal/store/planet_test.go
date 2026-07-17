@@ -50,9 +50,15 @@ func TestSystemContentsRoundTrip(t *testing.T) {
 			})
 		}
 	}
-	home := make([]HomePlanet, len(contents.Home))
-	for i, p := range contents.Home {
-		home[i] = HomePlanet{Orbit: p.Orbit, Type: string(p.Type), Habitability: p.Habitability}
+	// Genesis no longer generates a home template (ADR-0017: home systems are
+	// generated on demand at founding). The store's home_template table is still
+	// live, though, so exercise its round-trip with a fixed literal until the E1
+	// §2 schema retirement removes the table.
+	home := []HomePlanet{
+		{Orbit: 1, Type: "rocky", Habitability: 0},
+		{Orbit: 3, Type: "rocky", Habitability: 25},
+		{Orbit: 4, Type: "asteroid belt", Habitability: 0},
+		{Orbit: 6, Type: "gas giant", Habitability: 10},
 	}
 
 	want := SystemContents{GameID: gameID, Planets: planets, Home: home}

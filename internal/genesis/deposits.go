@@ -10,12 +10,12 @@ import (
 	"github.com/mdhender/ecv6-api/internal/prng"
 )
 
-// The Genesis Deposits generator's identity, addressed under TagDeposit. These
-// pin the seed root Derive(TagDeposit, DepositsGeneratorID, DepositsVersion)
-// that all deposit randomness hangs off (ADR-0016). They match the frozen
-// (genID, version) = (1, 1) convention T1 pinned in the prng golden "roots"
-// section and T2/T3 followed for placement and system contents. Below the root
-// the generator owns its addressing.
+// The Genesis Deposits generator's provenance identity. Per ADR-0017 these are
+// RECORDED PROVENANCE only — they no longer enter the seed path. The deposits
+// seed root is Derive(TagDeposit) alone; below it each system is addressed by its
+// (q, r). Kept as the integer generator/version handles the store's
+// game_generator row records (pending the UUID reconciliation in the E1 §3
+// generator rows).
 const (
 	DepositsGeneratorID prng.Key = 1
 	DepositsVersion     prng.Key = 1
@@ -160,12 +160,11 @@ type SystemDeposits struct {
 }
 
 // DepositsResult is the Genesis Deposits stage output: every ordinary system's
-// deposits (in the same order as the system-contents systems handed in) and the
-// home-system template's deposits, generated once (the per-player copy is a later
-// step, E2).
+// deposits, in the same order as the system-contents systems handed in. There is
+// no home-system template (ADR-0017): home systems, and their deposits, are
+// generated on demand at founding, not here.
 type DepositsResult struct {
 	Systems []SystemDeposits
-	Home    []PlanetDeposits
 }
 
 // baseYieldPct returns a resource's base yield, in whole percent (Genesis
@@ -374,15 +373,14 @@ func assignSlots(order [3]Resource, amounts [3]float64, count int) [3]int {
 // Genesis Deposits:
 // https://github.com/mdhender/ecv6-docs/blob/main/content/reference/generators/genesis/deposits.md
 //
-// Determinism. Deposits root at Derive(TagDeposit, DepositsGeneratorID,
-// DepositsVersion). Each ordinary system draws from one Roller at
-// root.Roller(Key(q), Key(r)); the home template draws from
-// root.Roller(HomeTemplateQ, HomeTemplateR). Within a system the seven phases are
-// drawn strictly in the documented order (each phase completed system-wide before
-// the next), addressing planets and resources by their deterministic order, never
-// by Go-map iteration order.
+// Determinism. Deposits root at Derive(TagDeposit) — generator id/version are
+// provenance, not entropy (ADR-0017). Each ordinary system draws from one Roller
+// at root.Roller(Key(q), Key(r)). Within a system the seven phases are drawn
+// strictly in the documented order (each phase completed system-wide before the
+// next), addressing planets and resources by their deterministic order, never by
+// Go-map iteration order.
 func GenerateDeposits(seeds prng.Seeds, contents ContentsResult, settings DepositSettings) DepositsResult {
-	root := seeds.Derive(prng.TagDeposit, DepositsGeneratorID, DepositsVersion)
+	root := seeds.Derive(prng.TagDeposit)
 
 	systems := make([]SystemDeposits, len(contents.Systems))
 	for i, sys := range contents.Systems {
@@ -393,10 +391,7 @@ func GenerateDeposits(seeds prng.Seeds, contents ContentsResult, settings Deposi
 		}
 	}
 
-	homeRoller := root.Roller(HomeTemplateQ, HomeTemplateR)
-	home := generateSystemDeposits(homeRoller, contents.Home, settings)
-
-	return DepositsResult{Systems: systems, Home: home}
+	return DepositsResult{Systems: systems}
 }
 
 // planetGen is a planet's mutable deposit-generation state, carried across the

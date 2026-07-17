@@ -10,11 +10,12 @@ import (
 	"github.com/mdhender/ecv6-api/internal/prng"
 )
 
-// The Genesis Placement generator's identity, addressed under TagCluster. These
-// pin the seed root Derive(TagCluster, PlacementGeneratorID, PlacementVersion)
-// that all placement randomness hangs off (ADR-0016). They match the frozen
-// (genID, version) = (1, 1) convention T1 pinned in the prng golden "roots"
-// section. Below the root the generator owns its addressing.
+// The Genesis Placement generator's provenance identity. Per ADR-0017 these are
+// RECORDED PROVENANCE only — they no longer enter the seed path. The placement
+// seed root is Derive(TagCluster) alone; the generator's selection and Knobs are
+// the recorded inputs that make a run reproducible, not an id mixed into the
+// seed. Kept as the integer generator/version handles the store's game_generator
+// row records (pending the UUID reconciliation in the E1 §3 generator rows).
 const (
 	PlacementGeneratorID prng.Key = 1
 	PlacementVersion     prng.Key = 1
@@ -205,7 +206,9 @@ func Place(seeds prng.Seeds, s PlacementSettings) (PlacementResult, error) {
 
 	// One stream off the placement seed root supplies the shuffle. Deriving the
 	// root here — not at package scope — keeps the address explicit at the draw.
-	root := seeds.Derive(prng.TagCluster, PlacementGeneratorID, PlacementVersion)
+	// The root is Derive(TagCluster) alone: generator id/version are provenance,
+	// not entropy (ADR-0017).
+	root := seeds.Derive(prng.TagCluster)
 	roller := root.Roller(placementShuffleStream)
 	roller.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
