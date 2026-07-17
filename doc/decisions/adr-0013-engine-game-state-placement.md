@@ -62,3 +62,23 @@ are *hashed* (`internal/prng`), not how the seeds are warehoused.
 - **Not a frozen surface.** Table placement and the `uint64`-as-`INTEGER` storage
   can change via a forward migration ([ADR-0007](adr-0007-forward-only-migrations.md));
   only the `internal/prng` addressing/hashing is frozen once a game exists.
+
+## Note (2026-07-17): when and how seeds are assigned
+
+E1 (issue #90) added the `game_engine_state` store accessors (`GetEngineState`,
+`SaveEngineState`) and had to settle *when* a game's master seeds are written — a
+gap this ADR left open (it only established that a game may exist before its engine
+row does).
+
+- **Assigned at setup time, not at game creation.** The application-side
+  `CreateGame` never writes engine state; the setup orchestration (the turn-0
+  cluster generation the GM triggers) is what calls `SaveEngineState`. This keeps
+  the application domain unaware of determinism state, consistent with the
+  one-directional reference above.
+- **Unsupplied seeds default via `math/rand/v2`**, not `crypto/rand`. When the GM
+  does not supply seeds, the setup layer draws them from Go's top-level
+  `math/rand/v2` source (`rand.Uint64()`). Seeds are provenance, not a security
+  secret, and this keeps the standard-library-first posture (CLAUDE.md); the store
+  accessors themselves never invent seeds — that policy lives in the setup layer.
+- **`SaveEngineState` upserts** (`INSERT … ON CONFLICT(game_id) DO UPDATE`) so
+  setup-time regeneration is repeatable while alpha data is disposable.

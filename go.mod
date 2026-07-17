@@ -9,6 +9,7 @@ require (
 
 require (
 	github.com/getkin/kin-openapi v0.140.0
+	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.4.2
 	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
 	golang.org/x/crypto v0.54.0
@@ -20,7 +21,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
