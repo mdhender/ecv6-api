@@ -6,7 +6,7 @@
 // (internal/genesis) becomes ONE option — a monolithic cluster generator — not
 // the contract.
 //
-// This package holds three things and no algorithms:
+// This package holds two things and no algorithms:
 //
 //   - The three generator interfaces — [ClusterGenerator], [SystemGenerator],
 //     [PlanetGenerator] — over a uniform ([Knobs], [prng.Seeds]) signature, plus
@@ -18,9 +18,11 @@
 //     values (system count, density, spacing, per-resource abundance), not
 //     per-generator settings — so the signature is identical across a role and a
 //     GM can save a reusable layout.
-//   - A generator-facing domain model ([Cluster]/[System]/[Planet]/[Deposit]),
-//     distinct from both internal/genesis and internal/store, using the same
-//     string vocabulary as the store so the domain -> store mapping stays trivial.
+//
+// The generator-facing domain model ([domains.Cluster]/[domains.System]/
+// [domains.Planet]/[domains.Deposit]) lives in the behavior-free leaf package
+// internal/domains, shared with genesis, setup, and the future engine; the
+// interfaces here reference it.
 //
 // Determinism (ADR-0017): generator identity is SELECTION and PROVENANCE only,
 // never entropy. The UUID and version never enter the PRNG key path. Seeds are

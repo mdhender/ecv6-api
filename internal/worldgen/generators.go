@@ -5,6 +5,7 @@ package worldgen
 import (
 	"context"
 
+	"github.com/mdhender/ecv6-api/internal/domains"
 	"github.com/mdhender/ecv6-api/internal/prng"
 )
 
@@ -24,7 +25,7 @@ import (
 // ScopeCluster|ScopeSystem|ScopePlanet.
 type ClusterGenerator interface {
 	Generator
-	GenerateCluster(ctx context.Context, knobs Knobs, seeds prng.Seeds) (*Cluster, error)
+	GenerateCluster(ctx context.Context, knobs Knobs, seeds prng.Seeds) (*domains.Cluster, error)
 }
 
 // SystemGenerator fills one already-placed system — its orbits and planets (with
@@ -34,12 +35,12 @@ type ClusterGenerator interface {
 // SystemGenerator rebuilds it, then the faction is assigned.
 type SystemGenerator interface {
 	Generator
-	GenerateSystem(ctx context.Context, knobs Knobs, seeds prng.Seeds, sys System) ([]Planet, error)
+	GenerateSystem(ctx context.Context, knobs Knobs, seeds prng.Seeds, sys domains.System) ([]domains.Planet, error)
 }
 
 // PlanetGenerator fills one planet (e.g. its deposits) and returns an updated
 // copy. It must not mutate its input.
 type PlanetGenerator interface {
 	Generator
-	GeneratePlanet(ctx context.Context, knobs Knobs, seeds prng.Seeds, p Planet) (Planet, error)
+	GeneratePlanet(ctx context.Context, knobs Knobs, seeds prng.Seeds, p domains.Planet) (domains.Planet, error)
 }

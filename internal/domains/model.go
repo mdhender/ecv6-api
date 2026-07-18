@@ -1,16 +1,21 @@
 // Copyright (c) 2026 Michael D Henderson. All rights reserved.
 
-package worldgen
-
-// The generator-facing domain model — distinct from both internal/genesis
-// (which has its own stage result structs) and internal/store (the persistence
-// structs). It uses the same string vocabulary as the store (rocky|asteroid
-// belt|gas giant, fuel|mtls|nmtl) so the domain -> store mapping stays trivial.
+// Package domains holds the behavior-free world-data DTOs shared by the cluster
+// generators (internal/genesis, internal/worldgen), the setup workflow
+// (internal/setup), and the future store-blind engine. These are the domain
+// shape in the turn-0 generation pipeline (store shape -> domain shape ->
+// generator -> domain shape -> store shape -> persist): plain structs with no
+// methods and no logic, importing nothing else in this module. Validation and
+// behavior live in the logic packages, per Go idiom.
+//
+// The types use the same string vocabulary as the store (rocky|asteroid belt|gas
+// giant, fuel|mtls|nmtl) so the domain -> store mapping stays trivial.
 //
 // The nil convention marks ownership of a layer: a NIL Planets/Deposits slice
 // means "not filled yet"; a non-nil (possibly empty) slice means "this generator
 // owns the layer." The orchestrator uses it to decide whether to run a finer
 // generator.
+package domains
 
 // PlanetType is what occupies an orbit. Same values as the store.
 type PlanetType string
