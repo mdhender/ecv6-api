@@ -12,10 +12,12 @@ import (
 	"github.com/mdhender/ecv6-api/internal/worldgen"
 )
 
-// The genesis → store mapping, productionized from the test-only fixtures. Its
-// source is the domains world model (a generated *domains.Cluster), not the
-// genesis stage structs directly: the funnel is genesis → domains.Cluster (the
-// generator adapter) → store (here). See the E1 reconciliation on issue #90.
+// This file is the domainToStore (persist) adapter — the counterpart to the
+// snapshotToDomain (load) adapter in snapshot.go. Its source is the domains world
+// model (a generated *domains.Cluster), which the generator produces directly; the
+// funnel is genesis → domains.Cluster → store (here). This is the store edge of the
+// single-hop (Option A) pipeline: a value is converted once on the way out to the
+// store and never re-mapped. See the E1 reconciliation on issue #90 and ADR-0018.
 //
 // Each function is pure and total — it allocates store rows from an already
 // assembled cluster and never draws randomness or touches the database. The
