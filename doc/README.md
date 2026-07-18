@@ -18,6 +18,7 @@ relative path — relative paths break when rendered on GitHub.
 | [control-and-ownership.md](control-and-ownership.md) | Who controls and owns what: account → player → controller → faction → asset, with cardinalities and the domain boundary |
 | [determinism.md](determinism.md) | The PRNG mechanism spec: seeds, streams, key paths, frozen surfaces, how to add a domain tag, golden vectors |
 | [counter-based-prng.md](counter-based-prng.md) | Why the determinism design looks the way it does — reasoning, prior art, trade-offs |
+| [reference/cluster-setup.md](reference/cluster-setup.md) | How the software runs and persists turn-0 cluster generation: the `internal/setup.GenerateCluster` workflow seam, adapters, seed policy, and provenance |
 | [reference/system-generation.md](reference/system-generation.md) | How the engine will implement the Genesis System Contents generator: the stage seam and determinism, linking the upstream rules |
 | [reference/deposit-generation.md](reference/deposit-generation.md) | How the engine will implement the Genesis Deposits generator: the stage seam and determinism, linking the upstream rules |
 | [decisions/](decisions/) | ADRs — one file per hard-to-reverse decision |
