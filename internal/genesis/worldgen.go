@@ -7,13 +7,15 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/mdhender/ecv6-api/internal/domains"
 	"github.com/mdhender/ecv6-api/internal/prng"
 	"github.com/mdhender/ecv6-api/internal/worldgen"
 )
 
 // The adapter lives in package genesis, not internal/worldgen: the worldgen
 // contract must not depend on any concrete generator, so the dependency points
-// genesis -> worldgen (genesis reads the worldgen domain model and interfaces),
+// genesis -> worldgen (genesis reads the worldgen interfaces and the domains
+// world model),
 // never the reverse. Placing it here also lets it read the genesis stage result
 // structs directly.
 
@@ -62,7 +64,7 @@ func (GenesisCluster) Produces() worldgen.Scope {
 func (GenesisCluster) Flavor() worldgen.Flavor { return worldgen.FlavorNone }
 
 // GenerateCluster runs the three Genesis stages off the game's root seeds and
-// assembles a fully populated worldgen.Cluster:
+// assembles a fully populated domains.Cluster:
 //
 //	Place → GenerateContents → GenerateDeposits
 //
@@ -71,7 +73,7 @@ func (GenesisCluster) Flavor() worldgen.Flavor { return worldgen.FlavorNone }
 // invalid or infeasible settings — and it validates before drawing, so a failure
 // means nothing downstream ran and no partial cluster is returned:
 // genesis.ErrInvalidSettings / genesis.ErrInfeasible surface unchanged.
-func (GenesisCluster) GenerateCluster(ctx context.Context, knobs worldgen.Knobs, seeds prng.Seeds) (*worldgen.Cluster, error) {
+func (GenesisCluster) GenerateCluster(ctx context.Context, knobs worldgen.Knobs, seeds prng.Seeds) (*domains.Cluster, error) {
 	_ = ctx
 
 	placed, err := Place(seeds, placementSettings(knobs))
@@ -110,38 +112,38 @@ func depositSettings(k worldgen.Knobs) DepositSettings {
 	}
 }
 
-// assembleCluster joins the three stage results into the worldgen domain model.
+// assembleCluster joins the three stage results into the domains world model.
 // The stages emit their systems in one shared order (placement order), and the
 // deposit stage emits each system's per-planet deposits in the same order as that
 // system's planets, so contents and deposits zip by index. Every slice is built
 // with make, so it is non-nil even when empty: Genesis owns all three layers, and
 // a non-nil (possibly empty) slice is how the domain model marks an owned layer.
-func assembleCluster(placed PlacementResult, contents ContentsResult, deposits DepositsResult) *worldgen.Cluster {
-	cluster := &worldgen.Cluster{
+func assembleCluster(placed PlacementResult, contents ContentsResult, deposits DepositsResult) *domains.Cluster {
+	cluster := &domains.Cluster{
 		Radius:  placed.Radius,
-		Systems: make([]worldgen.System, len(contents.Systems)),
+		Systems: make([]domains.System, len(contents.Systems)),
 	}
 	for i, sc := range contents.Systems {
 		sd := deposits.Systems[i]
-		planets := make([]worldgen.Planet, len(sc.Planets))
+		planets := make([]domains.Planet, len(sc.Planets))
 		for j, p := range sc.Planets {
 			pd := sd.Planets[j]
-			deps := make([]worldgen.Deposit, len(pd.Deposits))
+			deps := make([]domains.Deposit, len(pd.Deposits))
 			for k, d := range pd.Deposits {
-				deps[k] = worldgen.Deposit{
-					Resource: worldgen.Resource(d.Resource),
+				deps[k] = domains.Deposit{
+					Resource: domains.Resource(d.Resource),
 					Quantity: d.Quantity,
 					Yield:    d.Yield,
 				}
 			}
-			planets[j] = worldgen.Planet{
+			planets[j] = domains.Planet{
 				Orbit:        p.Orbit,
-				Type:         worldgen.PlanetType(p.Type),
+				Type:         domains.PlanetType(p.Type),
 				Habitability: p.Habitability,
 				Deposits:     deps,
 			}
 		}
-		cluster.Systems[i] = worldgen.System{Q: sc.Hex.Q, R: sc.Hex.R, Planets: planets}
+		cluster.Systems[i] = domains.System{Q: sc.Hex.Q, R: sc.Hex.R, Planets: planets}
 	}
 	return cluster
 }

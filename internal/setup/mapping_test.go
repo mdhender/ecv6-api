@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mdhender/ecv6-api/internal/domains"
 	"github.com/mdhender/ecv6-api/internal/genesis"
 	"github.com/mdhender/ecv6-api/internal/prng"
 	"github.com/mdhender/ecv6-api/internal/store"
@@ -22,7 +23,7 @@ func mappingKnobs() worldgen.Knobs {
 }
 
 // genCluster builds a generated cluster for the mapping tests off a fixed seed.
-func genCluster(t *testing.T, knobs worldgen.Knobs) *worldgen.Cluster {
+func genCluster(t *testing.T, knobs worldgen.Knobs) *domains.Cluster {
 	t.Helper()
 	c, err := genesis.GenesisCluster{}.GenerateCluster(context.Background(), knobs, prng.New(0xABCD, 0x1234))
 	if err != nil {

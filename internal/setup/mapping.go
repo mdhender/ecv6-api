@@ -6,14 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/mdhender/ecv6-api/internal/domains"
 	"github.com/mdhender/ecv6-api/internal/genesis"
 	"github.com/mdhender/ecv6-api/internal/store"
 	"github.com/mdhender/ecv6-api/internal/worldgen"
 )
 
 // The genesis → store mapping, productionized from the test-only fixtures. Its
-// source is the worldgen domain model (a generated *worldgen.Cluster), not the
-// genesis stage structs directly: the funnel is genesis → worldgen.Cluster (the
+// source is the domains world model (a generated *domains.Cluster), not the
+// genesis stage structs directly: the funnel is genesis → domains.Cluster (the
 // generator adapter) → store (here). See the E1 reconciliation on issue #90.
 //
 // Each function is pure and total — it allocates store rows from an already
@@ -25,7 +26,7 @@ import (
 // settings (the Knobs actually run), recorded so a game remembers what it asked
 // for — they are not re-derived from the cluster. Systems carry only their (q, r);
 // their contents map separately (systemContentsToStore / depositsToStore).
-func clusterToStore(gameID int64, knobs worldgen.Knobs, c *worldgen.Cluster) store.Cluster {
+func clusterToStore(gameID int64, knobs worldgen.Knobs, c *domains.Cluster) store.Cluster {
 	systems := make([]store.System, len(c.Systems))
 	for i, s := range c.Systems {
 		systems[i] = store.System{Q: s.Q, R: s.R}
@@ -44,7 +45,7 @@ func clusterToStore(gameID int64, knobs worldgen.Knobs, c *worldgen.Cluster) sto
 // Each planet carries its system's (q, r), so one flat slice addresses every
 // system's orbits. There are no home-template rows (ADR-0017): a home system is
 // ordinary planet rows produced on demand at founding.
-func systemContentsToStore(gameID int64, c *worldgen.Cluster) store.SystemContents {
+func systemContentsToStore(gameID int64, c *domains.Cluster) store.SystemContents {
 	var planets []store.Planet
 	for _, s := range c.Systems {
 		for _, p := range s.Planets {
@@ -68,7 +69,7 @@ func systemContentsToStore(gameID int64, c *worldgen.Cluster) store.SystemConten
 // of the generation order (reproducible from the game seeds), which is why the
 // store does not hand out a surrogate id here. There are no home-template deposits
 // (ADR-0017).
-func depositsToStore(gameID int64, c *worldgen.Cluster) store.Deposits {
+func depositsToStore(gameID int64, c *domains.Cluster) store.Deposits {
 	var deposits []store.Deposit
 	for _, s := range c.Systems {
 		for _, p := range s.Planets {
