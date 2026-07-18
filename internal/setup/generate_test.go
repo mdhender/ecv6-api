@@ -6,11 +6,12 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mdhender/ecv6-api/internal/genesis"
-	"github.com/mdhender/ecv6-api/internal/prng"
 	"github.com/mdhender/ecv6-api/internal/store"
+	"github.com/mdhender/ecv6-api/internal/worldgen"
 )
 
 // newTestGame opens an in-memory store and creates one game, returning the store
@@ -32,121 +33,184 @@ func newTestGame(t *testing.T) (*store.DB, int64) {
 	return db, gameID
 }
 
-// TestGeneratePipeline runs the pure pipeline on the defaults and asserts every
-// stage ran and produced coherent shapes: N systems placed, one contents entry
-// and one deposits entry per placed system.
-func TestGeneratePipeline(t *testing.T) {
-	t.Parallel()
-	placement := genesis.DefaultPlacementSettings()
-	deposits := genesis.DefaultDepositSettings()
-
-	res, err := generate(prng.New(0x0123456789abcdef, 0xfedcba9876543210), placement, deposits)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
+// newSeededGame is newTestGame plus assigned master seeds, ready to generate.
+func newSeededGame(t *testing.T, seed1, seed2 uint64) (*store.DB, int64) {
+	t.Helper()
+	db, gameID := newTestGame(t)
+	if err := db.SaveEngineState(context.Background(), store.EngineState{GameID: gameID, Seed1: seed1, Seed2: seed2}); err != nil {
+		t.Fatalf("SaveEngineState: %v", err)
 	}
-	if got := len(res.Placement.Systems); got != placement.N {
-		t.Errorf("placed %d systems, want N=%d", got, placement.N)
-	}
-	if got := len(res.Contents.Systems); got != placement.N {
-		t.Errorf("contents for %d systems, want %d", got, placement.N)
-	}
-	if got := len(res.Deposits.Systems); got != placement.N {
-		t.Errorf("deposits for %d systems, want %d", got, placement.N)
-	}
-}
-
-// TestGenerateDeterministic confirms the pipeline is a pure function of its
-// inputs: same seeds + settings reproduce byte-identical placement, contents, and
-// deposits; different seeds generally diverge.
-func TestGenerateDeterministic(t *testing.T) {
-	t.Parallel()
-	placement := genesis.PlacementSettings{N: 40, Density: genesis.Average, Spacing: 2}
-	deposits := genesis.DefaultDepositSettings()
-
-	a, err := generate(prng.New(11, 22), placement, deposits)
-	if err != nil {
-		t.Fatalf("generate a: %v", err)
-	}
-	b, err := generate(prng.New(11, 22), placement, deposits)
-	if err != nil {
-		t.Fatalf("generate b: %v", err)
-	}
-	if !reflect.DeepEqual(a, b) {
-		t.Error("same seeds + settings produced different clusters")
-	}
-
-	c, err := generate(prng.New(33, 44), placement, deposits)
-	if err != nil {
-		t.Fatalf("generate c: %v", err)
-	}
-	if reflect.DeepEqual(a, c) {
-		t.Error("different seeds produced identical clusters (suspicious)")
-	}
-}
-
-// TestGenerateInvalidSettings asserts out-of-range settings fail up front with
-// ErrInvalidSettings and no result.
-func TestGenerateInvalidSettings(t *testing.T) {
-	t.Parallel()
-	bad := genesis.PlacementSettings{N: 1, Density: genesis.Average, Spacing: 2} // N below MinSystems
-	if _, err := generate(prng.New(1, 2), bad, genesis.DefaultDepositSettings()); !errors.Is(err, genesis.ErrInvalidSettings) {
-		t.Fatalf("generate(invalid) error = %v, want ErrInvalidSettings", err)
-	}
-}
-
-// TestGenerateInfeasible pins the placement infeasible case (the supplement's
-// N=100, extremely dense, S=40 example) through the pipeline: it fails cleanly
-// before any downstream stage runs.
-func TestGenerateInfeasible(t *testing.T) {
-	t.Parallel()
-	infeasible := genesis.PlacementSettings{N: 100, Density: genesis.ExtremelyDense, Spacing: 40}
-	if _, err := generate(prng.New(1, 2), infeasible, genesis.DefaultDepositSettings()); !errors.Is(err, genesis.ErrInfeasible) {
-		t.Fatalf("generate(infeasible) error = %v, want ErrInfeasible", err)
-	}
+	return db, gameID
 }
 
 // TestGenerateClusterSeedsUnassigned asserts that generating for a game whose
 // master seeds were never written (no game_engine_state row) reports
-// ErrRecordNotFound rather than generating off zero seeds.
+// ErrRecordNotFound rather than generating off zero seeds — and writes nothing.
 func TestGenerateClusterSeedsUnassigned(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	db, gameID := newTestGame(t)
 
-	err := GenerateCluster(ctx, db, gameID, genesis.DefaultPlacementSettings(), genesis.DefaultDepositSettings())
-	if !errors.Is(err, store.ErrRecordNotFound) {
+	if err := GenerateCluster(ctx, db, gameID, mappingKnobs()); !errors.Is(err, store.ErrRecordNotFound) {
 		t.Fatalf("GenerateCluster(no seeds) error = %v, want ErrRecordNotFound", err)
 	}
-}
-
-// TestGenerateClusterRuns asserts that, with seeds assigned, GenerateCluster runs
-// the pipeline without error. (Persistence is E1 §2–§4; this covers the seed-load
-// and error envelope.)
-func TestGenerateClusterRuns(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	db, gameID := newTestGame(t)
-	if err := db.SaveEngineState(ctx, store.EngineState{GameID: gameID, Seed1: 0xC0FFEE, Seed2: 0xBEEF}); err != nil {
-		t.Fatalf("SaveEngineState: %v", err)
-	}
-
-	if err := GenerateCluster(ctx, db, gameID, genesis.DefaultPlacementSettings(), genesis.DefaultDepositSettings()); err != nil {
-		t.Fatalf("GenerateCluster: %v", err)
+	if _, err := db.GetCluster(ctx, gameID); !errors.Is(err, store.ErrRecordNotFound) {
+		t.Errorf("cluster written despite unassigned seeds: %v", err)
 	}
 }
 
 // TestGenerateClusterInfeasible asserts infeasible settings surface through
-// GenerateCluster (wrapped, but errors.Is still matches) once seeds are present.
+// GenerateCluster and leave no rows behind.
 func TestGenerateClusterInfeasible(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	db, gameID := newTestGame(t)
-	if err := db.SaveEngineState(ctx, store.EngineState{GameID: gameID, Seed1: 1, Seed2: 2}); err != nil {
-		t.Fatalf("SaveEngineState: %v", err)
+	db, gameID := newSeededGame(t, 1, 2)
+
+	knobs := worldgen.DefaultKnobs()
+	knobs.Placement = worldgen.PlacementKnobs{Count: 100, Density: worldgen.ExtremelyDense, Spacing: 40}
+	if err := GenerateCluster(ctx, db, gameID, knobs); !errors.Is(err, genesis.ErrInfeasible) {
+		t.Fatalf("GenerateCluster(infeasible) error = %v, want ErrInfeasible", err)
+	}
+	if _, err := db.GetCluster(ctx, gameID); !errors.Is(err, store.ErrRecordNotFound) {
+		t.Errorf("cluster written despite infeasible settings: %v", err)
+	}
+}
+
+// TestGenerateClusterInvalidNoWrites asserts invalid settings fail up front with
+// ErrInvalidSettings and write nothing.
+func TestGenerateClusterInvalidNoWrites(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, gameID := newSeededGame(t, 1, 2)
+
+	knobs := mappingKnobs()
+	knobs.Placement.Count = 1 // below MinSystems
+	if err := GenerateCluster(ctx, db, gameID, knobs); !errors.Is(err, genesis.ErrInvalidSettings) {
+		t.Fatalf("GenerateCluster(invalid) error = %v, want ErrInvalidSettings", err)
+	}
+	if _, err := db.GetCluster(ctx, gameID); !errors.Is(err, store.ErrRecordNotFound) {
+		t.Errorf("cluster written despite invalid settings: %v", err)
+	}
+}
+
+// TestGenerateClusterPersists runs the full pass and confirms every stage's output
+// landed: the cluster and its systems, the planets, the deposits, and the three
+// generator-selection rows with their recorded settings.
+func TestGenerateClusterPersists(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, gameID := newSeededGame(t, 0xC0FFEE, 0xBEEF)
+
+	knobs := mappingKnobs()
+	if err := GenerateCluster(ctx, db, gameID, knobs); err != nil {
+		t.Fatalf("GenerateCluster: %v", err)
 	}
 
-	infeasible := genesis.PlacementSettings{N: 100, Density: genesis.ExtremelyDense, Spacing: 40}
-	if err := GenerateCluster(ctx, db, gameID, infeasible, genesis.DefaultDepositSettings()); !errors.Is(err, genesis.ErrInfeasible) {
-		t.Fatalf("GenerateCluster(infeasible) error = %v, want ErrInfeasible", err)
+	cluster, err := db.GetCluster(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetCluster: %v", err)
+	}
+	if cluster.N != int(knobs.Placement.Count) || len(cluster.Systems) != int(knobs.Placement.Count) {
+		t.Errorf("cluster N=%d, %d systems; want %d each", cluster.N, len(cluster.Systems), int(knobs.Placement.Count))
+	}
+
+	contents, err := db.GetSystemContents(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetSystemContents: %v", err)
+	}
+	if len(contents.Planets) == 0 {
+		t.Error("no planets persisted")
+	}
+
+	deposits, err := db.GetDeposits(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetDeposits: %v", err)
+	}
+	if len(deposits.Deposits) == 0 {
+		t.Error("no deposits persisted")
+	}
+
+	// All three generator-selection rows exist; the deposits row records the
+	// resolved abundance knobs as its settings JSON.
+	for _, stage := range []string{store.StagePlacement, store.StageSystemContents, store.StageDeposits} {
+		g, err := db.GetGenerator(ctx, gameID, stage)
+		if err != nil {
+			t.Fatalf("GetGenerator(%s): %v", stage, err)
+		}
+		if g.Version != 1 {
+			t.Errorf("generator %s version = %d, want 1", stage, g.Version)
+		}
+	}
+	dep, err := db.GetGenerator(ctx, gameID, store.StageDeposits)
+	if err != nil {
+		t.Fatalf("GetGenerator(deposits): %v", err)
+	}
+	if !strings.Contains(dep.Settings, "\"fuel\"") {
+		t.Errorf("deposits generator settings = %q, want resolved deposit knobs", dep.Settings)
+	}
+}
+
+// TestGenerateClusterRegenerates confirms regeneration replaces cleanly: running
+// twice for the same game does not raise ErrConflict and leaves the same row counts.
+func TestGenerateClusterRegenerates(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, gameID := newSeededGame(t, 42, 99)
+	knobs := mappingKnobs()
+
+	if err := GenerateCluster(ctx, db, gameID, knobs); err != nil {
+		t.Fatalf("first GenerateCluster: %v", err)
+	}
+	first, err := db.GetDeposits(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetDeposits (first): %v", err)
+	}
+
+	if err := GenerateCluster(ctx, db, gameID, knobs); err != nil {
+		t.Fatalf("second GenerateCluster (regenerate): %v", err)
+	}
+	second, err := db.GetDeposits(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetDeposits (second): %v", err)
+	}
+	if len(first.Deposits) != len(second.Deposits) {
+		t.Errorf("regeneration changed deposit count: %d then %d", len(first.Deposits), len(second.Deposits))
+	}
+}
+
+// TestGenerateClusterDeterministic confirms the persisted rows are a pure function
+// of the seeds and knobs: two games generated from the same seeds + knobs hold
+// identical clusters, planets, and deposits.
+func TestGenerateClusterDeterministic(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	knobs := mappingKnobs()
+
+	dbA, gameA := newSeededGame(t, 0x1234, 0x5678)
+	dbB, gameB := newSeededGame(t, 0x1234, 0x5678)
+	if err := GenerateCluster(ctx, dbA, gameA, knobs); err != nil {
+		t.Fatalf("GenerateCluster A: %v", err)
+	}
+	if err := GenerateCluster(ctx, dbB, gameB, knobs); err != nil {
+		t.Fatalf("GenerateCluster B: %v", err)
+	}
+
+	ca, _ := dbA.GetCluster(ctx, gameA)
+	cb, _ := dbB.GetCluster(ctx, gameB)
+	if ca.Radius != cb.Radius || ca.N != cb.N || ca.Density != cb.Density ||
+		ca.Spacing != cb.Spacing || !reflect.DeepEqual(ca.Systems, cb.Systems) {
+		t.Error("same seeds + knobs produced different clusters")
+	}
+
+	pa, _ := dbA.GetSystemContents(ctx, gameA)
+	pb, _ := dbB.GetSystemContents(ctx, gameB)
+	if !reflect.DeepEqual(pa.Planets, pb.Planets) {
+		t.Error("same seeds + knobs produced different planets")
+	}
+
+	da, _ := dbA.GetDeposits(ctx, gameA)
+	dbb, _ := dbB.GetDeposits(ctx, gameB)
+	if !reflect.DeepEqual(da.Deposits, dbb.Deposits) {
+		t.Error("same seeds + knobs produced different deposits")
 	}
 }

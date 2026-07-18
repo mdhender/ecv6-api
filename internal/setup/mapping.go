@@ -3,6 +3,10 @@
 package setup
 
 import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/mdhender/ecv6-api/internal/genesis"
 	"github.com/mdhender/ecv6-api/internal/store"
 	"github.com/mdhender/ecv6-api/internal/worldgen"
 )
@@ -84,4 +88,49 @@ func depositsToStore(gameID int64, c *worldgen.Cluster) store.Deposits {
 		}
 	}
 	return store.Deposits{GameID: gameID, Deposits: deposits}
+}
+
+// generatorSelections builds the three game_generator rows a game records for its
+// Genesis run (ADR-0016): one per stage — placement, system_contents, deposits —
+// each carrying the stage's generator identity and version and the resolved knobs
+// it ran as opaque JSON settings. Genesis is monolithic (it fills all three
+// stages), so every row records a Genesis per-stage identity; the system_contents
+// stage takes no knobs, so its settings are the empty object.
+//
+// GeneratorID/Version are the genesis integer stage identities the store's
+// game_generator columns expect today. ADR-0017 makes generator_id the generator's
+// UUID (Identity().ID); reconciling the column to that UUID is a later schema
+// change, out of scope for the persist pass.
+func generatorSelections(gameID int64, knobs worldgen.Knobs) ([]store.GeneratorSelection, error) {
+	placementJSON, err := json.Marshal(knobs.Placement)
+	if err != nil {
+		return nil, fmt.Errorf("marshal placement knobs: %w", err)
+	}
+	depositsJSON, err := json.Marshal(knobs.Deposits)
+	if err != nil {
+		return nil, fmt.Errorf("marshal deposit knobs: %w", err)
+	}
+	return []store.GeneratorSelection{
+		{
+			GameID:      gameID,
+			Stage:       store.StagePlacement,
+			GeneratorID: int64(genesis.PlacementGeneratorID),
+			Version:     int64(genesis.PlacementVersion),
+			Settings:    string(placementJSON),
+		},
+		{
+			GameID:      gameID,
+			Stage:       store.StageSystemContents,
+			GeneratorID: int64(genesis.SysContentsGeneratorID),
+			Version:     int64(genesis.SysContentsVersion),
+			Settings:    "{}",
+		},
+		{
+			GameID:      gameID,
+			Stage:       store.StageDeposits,
+			GeneratorID: int64(genesis.DepositsGeneratorID),
+			Version:     int64(genesis.DepositsVersion),
+			Settings:    string(depositsJSON),
+		},
+	}, nil
 }

@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Michael D Henderson. All rights reserved.
 
-// Package setup runs a game's turn-0 world generation: it drives the pure
-// Genesis stages (internal/genesis) off the game's master seeds and, in later E1
-// steps, maps and persists the result into the store (internal/store). It is the
-// orchestration seam between generation and persistence — the piece the read
-// model (E2) depends on to find non-empty tables.
+// Package setup runs a game's turn-0 world generation: it drives the Genesis
+// cluster generator (internal/genesis, behind the internal/worldgen contract) off
+// the game's master seeds, maps the result to store structs, and persists it
+// (internal/store) in one idempotent pass. It is the orchestration seam between
+// generation and persistence — the piece the read model (E2) depends on to find
+// non-empty tables.
 package setup
 
 import (
@@ -14,67 +15,68 @@ import (
 	"github.com/mdhender/ecv6-api/internal/genesis"
 	"github.com/mdhender/ecv6-api/internal/prng"
 	"github.com/mdhender/ecv6-api/internal/store"
+	"github.com/mdhender/ecv6-api/internal/worldgen"
 )
 
-// clusterResult bundles the three Genesis stage outputs for one game, in
-// dependency order (placement feeds contents feeds deposits). It is the hand-off
-// from the pure pipeline to the mapping and persistence steps (E1 §2–§4, not yet
-// wired).
-type clusterResult struct {
-	Placement genesis.PlacementResult
-	Contents  genesis.ContentsResult
-	Deposits  genesis.DepositsResult
-}
-
-// GenerateCluster runs turn-0 cluster generation for a game. It loads the game's
-// master seeds, then runs the three Genesis stages off those seeds:
+// GenerateCluster runs turn-0 cluster generation for a game and persists it. It
+// loads the game's master seeds, runs the Genesis cluster generator off those
+// seeds and the given knobs, maps the generated cluster to store rows, and writes
+// them in one pass:
 //
-//	Place → GenerateContents → GenerateDeposits
+//	DeleteGeneration → SaveCluster → SaveGenerator ×3 → SaveSystemContents → SaveDeposits
 //
-// Because generation draws only off the game's derived seeds, the same seeds and
-// settings always produce the same cluster, independent of the machine or map
-// iteration order.
+// Generation runs entirely in memory first, so an invalid or infeasible request
+// surfaces as genesis.ErrInvalidSettings / genesis.ErrInfeasible before any write
+// — a bad run never disturbs existing data (ADR-0014: an overshoot is the GM's
+// problem, no engine fallback). Because generation draws only off the game's
+// derived seeds, the same seeds and knobs always produce the same rows,
+// independent of the machine or map-iteration order.
 //
-// Settings are validated before any stage runs, so invalid or infeasible
-// settings surface as genesis.ErrInvalidSettings / genesis.ErrInfeasible with no
-// writes (ADR-0014: an overshoot is the GM's problem, no engine fallback). A game
-// whose master seeds are unassigned (no game_engine_state row; see E1 §0 and
-// ADR-0013) returns store.ErrRecordNotFound.
-//
-// Mapping the genesis output to store structs and persisting it (E1 §2–§4) attach
-// at the seam marked below; today GenerateCluster runs generation and reports
-// failures, but writes nothing.
-func GenerateCluster(ctx context.Context, db *store.DB, gameID int64, placement genesis.PlacementSettings, deposits genesis.DepositSettings) error {
+// Persistence is idempotent: DeleteGeneration clears any prior generation first,
+// so regenerating a game replaces its rows outright (alpha data is disposable and
+// regeneration must be repeatable). A game whose master seeds are unassigned (no
+// game_engine_state row; see E1 §0 and ADR-0013) returns store.ErrRecordNotFound
+// and writes nothing.
+func GenerateCluster(ctx context.Context, db *store.DB, gameID int64, knobs worldgen.Knobs) error {
 	es, err := db.GetEngineState(ctx, gameID)
 	if err != nil {
 		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
 	}
 
-	root := prng.New(es.Seed1, es.Seed2)
-	if _, err := generate(root, placement, deposits); err != nil {
+	// Generate in memory; a bad request fails here, before any write.
+	cluster, err := genesis.GenesisCluster{}.GenerateCluster(ctx, knobs, prng.New(es.Seed1, es.Seed2))
+	if err != nil {
 		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
 	}
 
-	// TODO(E1 §2–§4): map the genesis result to store structs (mirror
-	// Quantity → initial/current, assign deposit_no), build the three
-	// game_generator selection rows, and persist in one idempotent pass
-	// (SaveCluster → SaveGenerator ×3 → SaveSystemContents → SaveDeposits).
-	return nil
-}
-
-// generate runs the three pure Genesis stages off a game's root seeds, threading
-// each stage's output into the next. Only Place can fail — on invalid or
-// infeasible settings — and it validates up front, so a failure means nothing
-// downstream ran; GenerateContents and GenerateDeposits are total. Each stage
-// derives its own per-stage seed root from root via its frozen stage tag
-// (TagCluster / TagSystem / TagDeposit), so the caller hands the same root to
-// all three.
-func generate(root prng.Seeds, placement genesis.PlacementSettings, deposits genesis.DepositSettings) (clusterResult, error) {
-	placed, err := genesis.Place(root, placement)
+	// Map the generated cluster to store rows and build the generator-selection
+	// rows (§2–§3).
+	storeCluster := clusterToStore(gameID, knobs, cluster)
+	contents := systemContentsToStore(gameID, cluster)
+	deposits := depositsToStore(gameID, cluster)
+	generators, err := generatorSelections(gameID, knobs)
 	if err != nil {
-		return clusterResult{}, err
+		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
 	}
-	contents := genesis.GenerateContents(root, placed.Systems)
-	dep := genesis.GenerateDeposits(root, contents, deposits)
-	return clusterResult{Placement: placed, Contents: contents, Deposits: dep}, nil
+
+	// Persist (§4). Clear any prior generation first so a re-run replaces cleanly,
+	// then write child-after-parent so the foreign keys resolve.
+	if err := db.DeleteGeneration(ctx, gameID); err != nil {
+		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
+	}
+	if err := db.SaveCluster(ctx, storeCluster); err != nil {
+		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
+	}
+	for _, g := range generators {
+		if err := db.SaveGenerator(ctx, g); err != nil {
+			return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
+		}
+	}
+	if err := db.SaveSystemContents(ctx, contents); err != nil {
+		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
+	}
+	if err := db.SaveDeposits(ctx, deposits); err != nil {
+		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
+	}
+	return nil
 }
