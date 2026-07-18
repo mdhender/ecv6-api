@@ -13,15 +13,21 @@ import (
 	"fmt"
 
 	"github.com/mdhender/ecv6-api/internal/genesis"
-	"github.com/mdhender/ecv6-api/internal/prng"
 	"github.com/mdhender/ecv6-api/internal/store"
 	"github.com/mdhender/ecv6-api/internal/worldgen"
 )
 
-// GenerateCluster runs turn-0 cluster generation for a game and persists it. It
-// loads the game's master seeds, runs the Genesis cluster generator off those
-// seeds and the given knobs, maps the generated cluster to store rows, and writes
-// them in one pass:
+// GenerateCluster runs turn-0 cluster generation for a game and persists it. It is
+// the setup workflow — the single-hop (Option A) pipeline a future E2 handler
+// calls:
+//
+//	ensureSeeds → snapshotToDomain → genesis.GenerateCluster → domainToStore → persist
+//
+// ensureSeeds resolves the game's master seeds (assign-if-missing, ADR-0013);
+// snapshotToDomain adapts the stored engine snapshot into the generator's domain
+// input; the Genesis cluster generator fills a domains.Cluster from those seeds and
+// the given knobs; the mapping.go adapter converts it to store rows; and the pass
+// writes them:
 //
 //	DeleteGeneration → SaveCluster → SaveGenerator ×3 → SaveSystemContents → SaveDeposits
 //
@@ -32,19 +38,23 @@ import (
 // derived seeds, the same seeds and knobs always produce the same rows,
 // independent of the machine or map-iteration order.
 //
+// Seeds follow the setup-layer assign-if-missing policy (ADR-0013): a game with no
+// game_engine_state row is assigned fresh master seeds with current_turn 0 on its
+// first generation; a game that already has seeds reuses them, so regeneration
+// reproduces the world byte-for-byte.
+//
 // Persistence is idempotent: DeleteGeneration clears any prior generation first,
 // so regenerating a game replaces its rows outright (alpha data is disposable and
-// regeneration must be repeatable). A game whose master seeds are unassigned (no
-// game_engine_state row; see E1 §0 and ADR-0013) returns store.ErrRecordNotFound
-// and writes nothing.
+// regeneration must be repeatable).
 func GenerateCluster(ctx context.Context, db *store.DB, gameID int64, knobs worldgen.Knobs) error {
-	es, err := db.GetEngineState(ctx, gameID)
+	// Resolve the game's master seeds, assigning them if this is the first run.
+	es, err := ensureSeeds(ctx, db, gameID)
 	if err != nil {
 		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
 	}
 
 	// Generate in memory; a bad request fails here, before any write.
-	cluster, err := genesis.GenesisCluster{}.GenerateCluster(ctx, knobs, prng.New(es.Seed1, es.Seed2))
+	cluster, err := genesis.GenesisCluster{}.GenerateCluster(ctx, knobs, snapshotToDomain(es))
 	if err != nil {
 		return fmt.Errorf("generate cluster for game %d: %w", gameID, err)
 	}

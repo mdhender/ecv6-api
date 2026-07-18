@@ -43,19 +43,72 @@ func newSeededGame(t *testing.T, seed1, seed2 uint64) (*store.DB, int64) {
 	return db, gameID
 }
 
-// TestGenerateClusterSeedsUnassigned asserts that generating for a game whose
-// master seeds were never written (no game_engine_state row) reports
-// ErrRecordNotFound rather than generating off zero seeds — and writes nothing.
-func TestGenerateClusterSeedsUnassigned(t *testing.T) {
+// TestGenerateClusterAssignsSeeds asserts the assign-if-missing policy (ADR-0013):
+// generating for a game with no game_engine_state row succeeds, drawing fresh
+// master seeds; afterwards the engine state exists at current_turn 0 with (almost
+// surely) non-zero seeds, and a cluster was persisted.
+func TestGenerateClusterAssignsSeeds(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	db, gameID := newTestGame(t)
 
-	if err := GenerateCluster(ctx, db, gameID, mappingKnobs()); !errors.Is(err, store.ErrRecordNotFound) {
-		t.Fatalf("GenerateCluster(no seeds) error = %v, want ErrRecordNotFound", err)
+	if err := GenerateCluster(ctx, db, gameID, mappingKnobs()); err != nil {
+		t.Fatalf("GenerateCluster(no seeds) error = %v, want success", err)
 	}
-	if _, err := db.GetCluster(ctx, gameID); !errors.Is(err, store.ErrRecordNotFound) {
-		t.Errorf("cluster written despite unassigned seeds: %v", err)
+
+	es, err := db.GetEngineState(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetEngineState after generate: %v", err)
+	}
+	if es.CurrentTurn != 0 {
+		t.Errorf("assigned engine state CurrentTurn = %d, want 0", es.CurrentTurn)
+	}
+	if es.Seed1 == 0 && es.Seed2 == 0 {
+		t.Errorf("assigned seeds are both zero (%d, %d); want fresh non-zero seeds", es.Seed1, es.Seed2)
+	}
+	if _, err := db.GetCluster(ctx, gameID); err != nil {
+		t.Errorf("no cluster persisted after assign-if-missing generate: %v", err)
+	}
+}
+
+// TestGenerateClusterReusesAssignedSeeds asserts the reuse-if-present half of the
+// policy: once seeds are assigned, regeneration reuses them (does not re-draw), so
+// the world reproduces byte-for-byte.
+func TestGenerateClusterReusesAssignedSeeds(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db, gameID := newTestGame(t)
+	knobs := mappingKnobs()
+
+	if err := GenerateCluster(ctx, db, gameID, knobs); err != nil {
+		t.Fatalf("first GenerateCluster: %v", err)
+	}
+	assigned, err := db.GetEngineState(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetEngineState after first generate: %v", err)
+	}
+	first, err := db.GetDeposits(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetDeposits (first): %v", err)
+	}
+
+	if err := GenerateCluster(ctx, db, gameID, knobs); err != nil {
+		t.Fatalf("second GenerateCluster (regenerate): %v", err)
+	}
+	reused, err := db.GetEngineState(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetEngineState after second generate: %v", err)
+	}
+	if reused.Seed1 != assigned.Seed1 || reused.Seed2 != assigned.Seed2 {
+		t.Errorf("seeds changed on regenerate: (%d, %d) then (%d, %d); want reuse",
+			assigned.Seed1, assigned.Seed2, reused.Seed1, reused.Seed2)
+	}
+	second, err := db.GetDeposits(ctx, gameID)
+	if err != nil {
+		t.Fatalf("GetDeposits (second): %v", err)
+	}
+	if !reflect.DeepEqual(first.Deposits, second.Deposits) {
+		t.Error("regeneration with reused seeds produced different deposits")
 	}
 }
 
