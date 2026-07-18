@@ -3,6 +3,11 @@
 > **Status: stub.** Fill in as the first packages land; this file describes the
 > intended shape, not existing code.
 
+The overall project shape — the three commands, the thin spec-first API, the
+generators-plus-engine split, and the domain adapters that are the single store ↔
+component seam — is recorded in
+[ADR-0018](decisions/adr-0018-project-shape-and-engine-store-boundary.md).
+
 ## Layers
 
 The server separates three concerns named in the CLAUDE.md:
@@ -22,6 +27,12 @@ The server separates three concerns named in the CLAUDE.md:
   those separable so a scenario can be exercised without standing up a whole game
   (subsystems carry their own derived seeds).
 - Handlers depend on the engine and store; the engine depends on neither.
+- The engine and generators define their own data structures and never reference
+  store types; **domain adapters** own the store ↔ component translation as the one
+  package that imports both sides. The engine takes a turn snapshot, mutates it,
+  and returns errors (snapshot → adapt → mutate → adapt → update); it has no
+  knowledge of the store. See
+  [ADR-0018](decisions/adr-0018-project-shape-and-engine-store-boundary.md).
 
 ## Request lifecycle
 
