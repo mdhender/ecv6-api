@@ -59,6 +59,16 @@ are *hashed* (`internal/prng`), not how the seeds are warehoused.
   it loads that game's row from `game_engine_state` and every table it touches is
   keyed by that `game_id`. Keeping this state out of the application `games` row
   keeps the engine's inputs to exactly the ids it is meant to see.
+  - **Clarified by [ADR-0018](adr-0018-project-shape-and-engine-store-boundary.md):**
+    "it loads … and every table it touches" conflates two roles. The engine is
+    **store-blind** — it never opens `game_engine_state` or any store table. Loading
+    the engine-state row and touching store tables is the *workflow's* job: the
+    workflow reads the snapshot, adapts it to the engine shape, runs the engine, and
+    adapts the result back to persist it (snapshot → adapt → mutate → adapt → update).
+    Read this bullet as scoping the *game's engine state* to one `game_id`, not as the
+    engine performing the load. The same store-blind rule governs turn-0 generation:
+    the generator receives seeds and produces domain data, while `internal/setup`
+    owns the store I/O.
 - **Not a frozen surface.** Table placement and the `uint64`-as-`INTEGER` storage
   can change via a forward migration ([ADR-0007](adr-0007-forward-only-migrations.md));
   only the `internal/prng` addressing/hashing is frozen once a game exists.
